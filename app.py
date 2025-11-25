@@ -102,17 +102,57 @@ def initialize_chat():
         }
 
 def display_profile(character_key):
-    """Отображение профиля персонажа"""
+    """Отображение профиля персонажа вверху диалога"""
     if character_key in CHARACTERS_PROFILES:
         profile = CHARACTERS_PROFILES[character_key]
-        with st.sidebar:
-            st.markdown("---")
-            st.markdown("### 👤 Профиль")
-            st.markdown(f"**{profile['full_name']}**")
-            st.markdown(f"{profile['status']}")
-            st.markdown(f"**Роль:** {profile['role']}")
-            st.markdown(f"**Отдел:** {profile['department']}")
-            st.markdown(f"**Часы работы:** {profile['work_hours']}")
+        
+        # Красивая карточка профиля с фиолетовым градиентом
+        st.markdown(f"""
+        <div style='
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 1.5rem;
+            border-radius: 16px;
+            border: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            margin-bottom: 1.5rem;
+            color: white;
+        '>
+            <div style='display: flex; align-items: center; gap: 1.5rem;'>
+                <div style='
+                    font-size: 64px; 
+                    background: white; 
+                    border-radius: 50%; 
+                    width: 80px; 
+                    height: 80px; 
+                    display: flex; 
+                    align-items: center; 
+                    justify-content: center;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+                '>
+                    {profile['photo']}
+                </div>
+                <div style='flex: 1;'>
+                    <h3 style='margin: 0 0 0.5rem 0; color: white; font-size: 1.4rem; font-weight: 600;'>{profile['full_name']}</h3>
+                    <div style='display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; flex-wrap: wrap;'>
+                        <span style='background: rgba(255,255,255,0.2); padding: 0.35rem 0.9rem; border-radius: 20px; font-size: 0.85rem; font-weight: 500;'>
+                            {profile['role']}
+                        </span>
+                        <span style='background: rgba(255,255,255,0.2); padding: 0.35rem 0.9rem; border-radius: 20px; font-size: 0.85rem; font-weight: 500;'>
+                            {profile['department']}
+                        </span>
+                    </div>
+                    <div style='display: flex; align-items: center; gap: 1.25rem; font-size: 0.9rem; opacity: 0.95;'>
+                        <span style='display: flex; align-items: center; gap: 0.4rem;'>
+                            👤 {profile['status']}
+                        </span>
+                        <span style='display: flex; align-items: center; gap: 0.4rem;'>
+                            🕐 {profile['work_hours']}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
 def display_chat_header(character_key):
     """Отображение заголовка чата с красивой карточкой профиля"""
@@ -169,6 +209,10 @@ def display_chat_header(character_key):
 
 def display_chat(character_key):
     """Отображение чата с выбранным персонажем/группой"""
+    # Показываем профиль для индивидуальных чатов вверху диалога
+    if character_key in ["alice", "maxim"]:
+        display_profile(character_key)
+    
     if character_key in CHARACTERS_RESPONSES:
         character = CHARACTERS_RESPONSES[character_key]
         st.subheader(f"💬 Чат с {character['name']}")
@@ -312,10 +356,6 @@ def main():
         }
         
         selected_chat = chat_map[chat_type]
-        
-        # Показываем профиль для индивидуальных чатов
-        if selected_chat in ["alice", "maxim"]:
-            display_profile(selected_chat)
         
         display_chat(selected_chat)
         
