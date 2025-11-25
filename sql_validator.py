@@ -60,70 +60,174 @@ class SQLSimulator:
             return None, f"❌ Ошибка выполнения: {str(e)}"
 
     def _execute_select(self, sql_query):
-        """Обработка SELECT запросов"""
-        # ОБНОВЛЕНО: Парсим с учетом алиасов
-        select_match = re.search(r'select\s+(.*?)\s+from\s+(\w+)(?:\s+(\w+))?', sql_query.lower())
-        if not select_match:
-            return None, "❌ Неверный формат SELECT запроса"
+        """Обработка SELECT запросов с поддержкой алиасов"""
+        try:
+            # НОРМАЛИЗУЕМ запрос - приводим к нижнему регистру для парсинга
+            sql_lower = sql_query.lower().strip()
             
-        columns = select_match.group(1)
-        table_name = select_match.group(2)
-        table_alias = select_match.group(3)  # Может быть None
-        
-        if table_name not in self.tables:
-            return None, f"❌ Таблица {table_name} не найдена"
+            # РАСШИРЕННЫЙ парсинг с поддержкой алиасов
+            # Паттерн: SELECT ... FROM table_name [AS] alias ...
+            select_pattern = r'select\s+(.*?)\s+from\s+(\w+)(?:\s+(?:as\s+)?(\w+))?'
+            select_match = re.search(select_pattern, sql_lower)
             
-        result = self.tables[table_name].copy()
-        
-        # ОБНОВЛЕНО: Обработка WHERE условий с алиасами
-        where_match = re.search(r'where\s+(.*?)(?:\s+order by|\s+group by|\s*$)', sql_query.lower())
-        if where_match:
-            where_condition = where_match.group(1)
-            # Заменяем алиасы на реальные имена таблиц в WHERE
-            if table_alias:
-                where_condition = where_condition.replace(f'{table_alias}.', '')
-            result = self._apply_where_condition(result, where_condition)
-        
-        # ОБНОВЛЕНО: Обработка JOIN с алиасами
-        if 'join' in sql_query.lower():
-            result = self._apply_joins(sql_query, result, table_alias)
-        
-        # ОБНОВЛЕНО: Выбор колонок с алиасами
-        if columns != '*':
-            # Удаляем алиасы из названий колонок
-            clean_columns = columns
-            if table_alias:
-                clean_columns = clean_columns.replace(f'{table_alias}.', '')
+            if not select_match:
+                return None, "❌ Неверный формат SELECT запроса"
+                
+            columns_part = select_match.group(1)
+            table_name = select_match.group(2)
+            table_alias = select_match.group(3)  # Может быть None
             
-            selected_columns = [col.strip().split('.')[-1] for col in clean_columns.split(',')]  # Берем последнюю часть после точки
-            missing_cols = [col for col in selected_columns if col not in result.columns]
-            if missing_cols:
-                return None, f"❌ Колонки не найдены: {missing_cols}"
-            result = result[selected_columns]
+            if table_name not in self.tables:
+                return None, f"❌ Таблица {table_name} не найдена"
+                
+            result = self.tables[table_name].copy()
+            
+            # ОБРАБОТКА WHERE с алиасами - УЛУЧШЕННАЯ
+            where_match = re.search(r'where\s+(.*?)(?:\s+order\s+by|\s+group\s+by|\s+limit|\s*$)', sql_lower, re.IGNORECASE)
+            if where_match:
+                where_condition = where_match.group(1)
+                # ЗАМЕНЯЕМ алиасы на реальные имена таблиц ВО ВСЕХ МЕСТАХ
+                if table_alias:
+                    # Заменяем "алиас.поле" на "поле"
+                    where_condition = re.sub(rf'\b{table_alias}\.\s*(\w+)', r'\1', where_condition)
+                # Удаляем ВСЕ алиасы таблиц на всякий случай
+                where_condition = re.sub(r'\b\w+\.\s*(\w+)', r'\1', where_condition)
+                result = self._apply_where_condition(result, where_condition)
+            
+            # ОБРАБОТКА JOIN с алиасами - УЛУЧШЕННАЯ
+            if 'join' in sql_lower:
+                result = self._apply_joins_with_aliases(sql_query, result, table_name, table_alias)
+            
+            # ВЫБОР КОЛОНОК с алиасами - УЛУЧШЕННАЯ
+            if columns_part != '*':
+                # Очищаем колонки от алиасов
+                clean_columns = []
+                for col in columns_part.split(','):
+                    col = col.strip()
+                    # Удаляем алиас таблицы если есть
+                    if table_alias and col.startswith(f'{table_alias}.'):
+                        col = col.replace(f'{table_alias}.', '')
+                    # Удаляем любой алиас таблицы (на случай если указан другой)
+                    col = re.sub(r'^\w+\.', '', col)
+                    # Удаляем лишние пробелы и кавычки
+                    col = col.replace('"', '').replace("'", "").strip()
+                    clean_columns.append(col)
+                
+                # Проверяем существование колонок
+                missing_cols = [col for col in clean_columns if col not in result.columns]
+                if missing_cols:
+                    return None, f"❌ Колонки не найдены: {missing_cols}"
+                result = result[clean_columns]
+            
+            # ORDER BY с алиасами - УЛУЧШЕННАЯ
+            order_match = re.search(r'order\s+by\s+(.*?)(?:\s+(asc|desc))?(?:\s+limit|\s*$)', sql_lower, re.IGNORECASE)
+            if order_match:
+                order_column = order_match.group(1).strip()
+                # Удаляем алиас из названия колонки
+                if table_alias and order_column.startswith(f'{table_alias}.'):
+                    order_column = order_column.replace(f'{table_alias}.', '')
+                # Удаляем любой алиас таблицы
+                order_column = re.sub(r'^\w+\.', '', order_column)
+                # Удаляем кавычки
+                order_column = order_column.replace('"', '').replace("'", "")
+                
+                order_asc = order_match.group(2) != 'desc'
+                if order_column in result.columns:
+                    result = result.sort_values(order_column, ascending=order_asc)
+                else:
+                    return None, f"❌ Колонка для ORDER BY не найдена: {order_column}"
+            
+            # GROUP BY с алиасами
+            group_match = re.search(r'group\s+by\s+(.*?)(?:\s+order\s+by|\s+limit|\s*$)', sql_lower, re.IGNORECASE)
+            if group_match:
+                group_columns = group_match.group(1).strip()
+                # Очищаем от алиасов
+                if table_alias:
+                    group_columns = re.sub(rf'\b{table_alias}\.\s*(\w+)', r'\1', group_columns)
+                group_columns = re.sub(r'\b\w+\.\s*(\w+)', r'\1', group_columns)
+                group_columns = group_columns.replace('"', '').replace("'", "")
+                
+                group_cols_list = [col.strip() for col in group_columns.split(',')]
+                missing_group_cols = [col for col in group_cols_list if col not in result.columns]
+                if missing_group_cols:
+                    return None, f"❌ Колонки для GROUP BY не найдены: {missing_group_cols}"
+                
+                # Для GROUP BY просто применяем группировку
+                result = result.groupby(group_cols_list).sum().reset_index()
+            
+            return result, "✅ Запрос выполнен успешно"
+            
+        except Exception as e:
+            return None, f"❌ Ошибка выполнения: {str(e)}"
+
+    def _apply_joins_with_aliases(self, sql_query, base_df, base_table, base_alias):
+        """Улучшенная обработка JOIN с поддержкой алиасов"""
+        sql_lower = sql_query.lower()
         
-        # ORDER BY с алиасами
-        order_match = re.search(r'order by\s+(.*?)\s+(asc|desc)?', sql_query.lower())
-        if order_match:
-            order_column = order_match.group(1)
-            # Удаляем алиас из названия колонки
-            if table_alias and order_column.startswith(f'{table_alias}.'):
-                order_column = order_column.replace(f'{table_alias}.', '')
-            order_asc = order_match.group(2) != 'desc'
-            if order_column in result.columns:
-                result = result.sort_values(order_column, ascending=order_asc)
+        # INNER JOIN с алиасами
+        if 'inner join' in sql_lower:
+            join_pattern = r'inner\s+join\s+(\w+)(?:\s+(?:as\s+)?(\w+))?\s+on\s+(.*?)(?:\s+where|\s+order\s+by|\s+group\s+by|\s*$)'
+            join_match = re.search(join_pattern, sql_lower, re.IGNORECASE)
+            if join_match:
+                join_table = join_match.group(1)
+                join_alias = join_match.group(2)
+                join_condition = join_match.group(3)
+                
+                if join_table in self.tables:
+                    # ОЧИСТКА условия JOIN от всех алиасов
+                    clean_condition = join_condition
+                    
+                    # Заменяем алиас базовой таблицы
+                    if base_alias:
+                        clean_condition = re.sub(rf'\b{base_alias}\.\s*(\w+)', r'\1', clean_condition)
+                    
+                    # Заменяем алиас присоединяемой таблицы  
+                    if join_alias:
+                        clean_condition = re.sub(rf'\b{join_alias}\.\s*(\w+)', r'\1', clean_condition)
+                    
+                    # Удаляем все остальные алиасы
+                    clean_condition = re.sub(r'\b\w+\.\s*(\w+)', r'\1', clean_condition)
+                    
+                    return self._perform_join(base_df, self.tables[join_table], clean_condition, 'inner')
         
-        return result, "✅ Запрос выполнен успешно"
+        # LEFT JOIN с алиасами
+        elif 'left join' in sql_lower:
+            join_pattern = r'left\s+join\s+(\w+)(?:\s+(?:as\s+)?(\w+))?\s+on\s+(.*?)(?:\s+where|\s+order\s+by|\s+group\s+by|\s*$)'
+            join_match = re.search(join_pattern, sql_lower, re.IGNORECASE)
+            if join_match:
+                join_table = join_match.group(1)
+                join_alias = join_match.group(2)
+                join_condition = join_match.group(3)
+                
+                if join_table in self.tables:
+                    # ОЧИСТКА условия JOIN от всех алиасов
+                    clean_condition = join_condition
+                    
+                    if base_alias:
+                        clean_condition = re.sub(rf'\b{base_alias}\.\s*(\w+)', r'\1', clean_condition)
+                    
+                    if join_alias:
+                        clean_condition = re.sub(rf'\b{join_alias}\.\s*(\w+)', r'\1', clean_condition)
+                    
+                    clean_condition = re.sub(r'\b\w+\.\s*(\w+)', r'\1', clean_condition)
+                    
+                    return self._perform_join(base_df, self.tables[join_table], clean_condition, 'left')
+        
+        return base_df
 
     def _apply_where_condition(self, df, condition):
-        """Применение условий WHERE любой сложности"""
+        """Улучшенная обработка WHERE условий с алиасами"""
         try:
-            # Заменяем SQL операторы на Python
+            # НОРМАЛИЗУЕМ условие - заменяем SQL операторы
             condition = condition.replace('<>', '!=').replace('=', '==')
+            
+            # УДАЛЯЕМ все оставшиеся алиасы таблиц
+            condition = re.sub(r'\b\w+\.\s*(\w+)', r'\1', condition)
             
             # Безопасное выполнение условия
             return df.query(condition, engine='python')
-        except:
-            # Ручная обработка если query не сработал
+        except Exception as e:
+            # Fallback на ручную обработку
             return self._manual_where_apply(df, condition)
 
     def _manual_where_apply(self, df, condition):
@@ -201,44 +305,6 @@ class SQLSimulator:
                     return df[df[col].astype(str).str.contains(value, case=False, na=False)]
         
         return df
-
-    def _apply_joins(self, sql_query, base_df, base_alias):
-        """Применение JOIN между таблицами"""
-        sql_lower = sql_query.lower()
-        
-        # INNER JOIN
-        if 'inner join' in sql_lower:
-            join_match = re.search(r'inner join\s+(\w+)(?:\s+(\w+))?\s+on\s+(.*?)(?:\s+where|\s+order by|\s*$)', sql_lower)
-            if join_match:
-                join_table = join_match.group(1)
-                join_alias = join_match.group(2)  # Может быть None
-                join_condition = join_match.group(3)
-                if join_table in self.tables:
-                    # ОБНОВЛЕНО: Удаляем алиасы из условия JOIN
-                    clean_condition = join_condition
-                    if base_alias:
-                        clean_condition = clean_condition.replace(f'{base_alias}.', '')
-                    if join_alias:
-                        clean_condition = clean_condition.replace(f'{join_alias}.', '')
-                    return self._perform_join(base_df, self.tables[join_table], clean_condition, 'inner')
-        
-        # LEFT JOIN  
-        elif 'left join' in sql_lower:
-            join_match = re.search(r'left join\s+(\w+)(?:\s+(\w+))?\s+on\s+(.*?)(?:\s+where|\s+order by|\s*$)', sql_lower)
-            if join_match:
-                join_table = join_match.group(1)
-                join_alias = join_match.group(2)  # Может быть None
-                join_condition = join_match.group(3)
-                if join_table in self.tables:
-                    # ОБНОВЛЕНО: Удаляем алиасы из условия JOIN
-                    clean_condition = join_condition
-                    if base_alias:
-                        clean_condition = clean_condition.replace(f'{base_alias}.', '')
-                    if join_alias:
-                        clean_condition = clean_condition.replace(f'{join_alias}.', '')
-                    return self._perform_join(base_df, self.tables[join_table], clean_condition, 'left')
-        
-        return base_df
 
     def _perform_join(self, left_df, right_df, condition, join_type):
         """Выполнение JOIN операций"""
