@@ -61,9 +61,10 @@ DEMO_DATABASE = {
     ],
     
     "registry_statuses": [
-        {"registry_id": "REG001", "registry_date": "2025-01-15", "partner_contract_id": "PARTNER_A", "is_excluded": False},
-        {"registry_id": "REG_B_001", "registry_date": "2025-01-15", "partner_contract_id": "PARTNER_B", "is_excluded": False},
-        {"registry_id": "REG_B_002", "registry_date": "2025-01-15", "partner_contract_id": "PARTNER_B", "is_excluded": False}
+        {"registry_id": "REG001", "registry_date": "2025-01-15", "partner_contract_id": "PARTNER_A", "is_excluded": 0},
+        {"registry_id": "REG002", "registry_date": "2025-01-15", "partner_contract_id": "PARTNER_A", "is_excluded": 1},
+        {"registry_id": "REG_B_001", "registry_date": "2025-01-15", "partner_contract_id": "PARTNER_B", "is_excluded": 0},
+        {"registry_id": "REG_B_002", "registry_date": "2025-01-15", "partner_contract_id": "PARTNER_B", "is_excluded": 0}
     ],
     
     "commission_rates": [
