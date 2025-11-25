@@ -13,7 +13,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Современные стили
+# Исправленные стили - РЕШЕНИЕ ПРОБЛЕМЫ БЕЛОГО ТЕКСТА
 st.markdown("""
 <style>
     .chat-message {
@@ -22,21 +22,22 @@ st.markdown("""
         margin-bottom: 1rem;
         border: 1px solid #e0e0e0;
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        color: #333333 !important;  /* Явно задаем цвет текста */
     }
     .user-message {
         background-color: #e3f2fd;
         margin-left: 2rem;
         border-left: 4px solid #2196F3;
-        color: #1565C0;
+        color: #1565C0 !important;  /* Явно задаем цвет для пользователя */
     }
     .bot-message {
         background-color: #f5f5f5;
         margin-right: 2rem;
         border-left: 4px solid #4CAF50;
-        color: #2E7D32;
+        color: #2E7D32 !important;  /* Явно задаем цвет для бота */
     }
     .chat-message strong {
-        color: #333333;
+        color: #333333 !important;  /* Явно задаем цвет для жирного текста */
         font-weight: 600;
     }
     .stTextInput input {
@@ -143,60 +144,7 @@ def display_profile(character_key):
                     </div>
                     <div style='display: flex; align-items: center; gap: 1.25rem; font-size: 0.9rem; opacity: 0.95;'>
                         <span style='display: flex; align-items: center; gap: 0.4rem;'>
-                            👤 {profile['status']}
-                        </span>
-                        <span style='display: flex; align-items: center; gap: 0.4rem;'>
-                            🕐 {profile['work_hours']}
-                        </span>
-                    </div>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-def display_chat_header(character_key):
-    """Отображение заголовка чата с красивой карточкой профиля"""
-    if character_key in CHARACTERS_PROFILES:
-        profile = CHARACTERS_PROFILES[character_key]
-        
-        # Красивая карточка профиля с фиолетовым градиентом
-        st.markdown(f"""
-        <div style='
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 1.5rem;
-            border-radius: 16px;
-            border: none;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            margin-bottom: 1.5rem;
-            color: white;
-        '>
-            <div style='display: flex; align-items: center; gap: 1.5rem;'>
-                <div style='
-                    font-size: 64px; 
-                    background: white; 
-                    border-radius: 50%; 
-                    width: 80px; 
-                    height: 80px; 
-                    display: flex; 
-                    align-items: center; 
-                    justify-content: center;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-                '>
-                    {profile['photo']}
-                </div>
-                <div style='flex: 1;'>
-                    <h3 style='margin: 0 0 0.5rem 0; color: white; font-size: 1.4rem; font-weight: 600;'>{profile['full_name']}</h3>
-                    <div style='display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; flex-wrap: wrap;'>
-                        <span style='background: rgba(255,255,255,0.2); padding: 0.35rem 0.9rem; border-radius: 20px; font-size: 0.85rem; font-weight: 500;'>
-                            {profile['role']}
-                        </span>
-                        <span style='background: rgba(255,255,255,0.2); padding: 0.35rem 0.9rem; border-radius: 20px; font-size: 0.85rem; font-weight: 500;'>
-                            {profile['department']}
-                        </span>
-                    </div>
-                    <div style='display: flex; align-items: center; gap: 1.25rem; font-size: 0.9rem; opacity: 0.95;'>
-                        <span style='display: flex; align-items: center; gap: 0.4rem;'>
-                            👤 {profile['status']}
+                            {profile['status']}
                         </span>
                         <span style='display: flex; align-items: center; gap: 0.4rem;'>
                             🕐 {profile['work_hours']}
