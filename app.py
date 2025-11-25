@@ -13,47 +13,57 @@ st.set_page_config(
     layout="wide"
 )
 
-# Исправленные стили - РЕШЕНИЕ ПРОБЛЕМЫ БЕЛОГО ТЕКСТА
+# Исправленные стили - РЕШЕНИЕ ПРОБЛЕМЫ БЕЛОГО ТЕКСТА ВО ВСЕХ ЭЛЕМЕНТАХ
 st.markdown("""
 <style>
+    /* Стили для сообщений чата */
     .chat-message {
         padding: 1rem; 
         border-radius: 0.5rem;
         margin-bottom: 1rem;
         border: 1px solid #e0e0e0;
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        color: #333333 !important;  /* Явно задаем цвет текста */
+        color: #333333 !important;
     }
     .user-message {
         background-color: #e3f2fd;
         margin-left: 2rem;
         border-left: 4px solid #2196F3;
-        color: #1565C0 !important;  /* Явно задаем цвет для пользователя */
+        color: #1565C0 !important;
     }
     .bot-message {
         background-color: #f5f5f5;
         margin-right: 2rem;
         border-left: 4px solid #4CAF50;
-        color: #2E7D32 !important;  /* Явно задаем цвет для бота */
+        color: #2E7D32 !important;
     }
     .chat-message strong {
-        color: #333333 !important;  /* Явно задаем цвет для жирного текста */
+        color: #333333 !important;
         font-weight: 600;
     }
+    
+    /* Стили для полей ввода текста в чатах */
     .stTextInput input {
         border: 1px solid #ccc;
         border-radius: 8px;
         padding: 8px 12px;
-        background: #fafafa;
+        background: #fafafa !important;
         font-size: 14px;
         transition: all 0.2s ease;
+        color: #333333 !important;  /* Явно задаем цвет текста */
     }
     .stTextInput input:focus {
         border-color: #2196F3;
-        background: white;
+        background: white !important;
         box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.1);
         outline: none;
+        color: #333333 !important;  /* Цвет текста при фокусе */
     }
+    .stTextInput input::placeholder {
+        color: #666666 !important;  /* Цвет placeholder */
+    }
+    
+    /* Стили для текстовых областей (SQL запросы) */
     .stTextArea textarea {
         border: 1px solid #ccc !important;
         border-radius: 8px !important;
@@ -62,13 +72,20 @@ st.markdown("""
         font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace !important;
         font-size: 14px !important;
         transition: all 0.2s ease !important;
+        color: #333333 !important;  /* Явно задаем цвет текста */
     }
     .stTextArea textarea:focus {
         border-color: #2196F3 !important;
         background: white !important;
         box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.1) !important;
         outline: none !important;
+        color: #333333 !important;  /* Цвет текста при фокусе */
     }
+    .stTextArea textarea::placeholder {
+        color: #666666 !important;  /* Цвет placeholder */
+    }
+    
+    /* Стили для кнопок */
     .stButton button {
         background-color: #2196F3;
         color: white;
@@ -81,12 +98,18 @@ st.markdown("""
         background-color: #1976D2;
         color: white;
     }
-    .profile-card {
-        padding: 1rem;
-        border: 1px solid #e0e0e0;
-        border-radius: 8px;
-        margin-bottom: 1rem;
-        background: white;
+    
+    /* Общие стили для всего текста в приложении */
+    .stApp {
+        color: #333333 !important;
+    }
+    
+    /* Стили для селектов и других элементов */
+    .stSelectbox select {
+        color: #333333 !important;
+    }
+    .stSelectbox div[data-baseweb="select"] {
+        color: #333333 !important;
     }
 </style>
 """, unsafe_allow_html=True)
