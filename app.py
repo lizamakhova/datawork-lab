@@ -13,7 +13,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Исправленные стили - РЕШЕНИЕ ПРОБЛЕМЫ БЕЛОГО ТЕКСТА ВО ВСЕХ ЭЛЕМЕНТАХ
+# Исправленные стили - ТОЛЬКО для полей ввода
 st.markdown("""
 <style>
     /* Стили для сообщений чата */
@@ -23,7 +23,6 @@ st.markdown("""
         margin-bottom: 1rem;
         border: 1px solid #e0e0e0;
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        color: #333333 !important;
     }
     .user-message {
         background-color: #e3f2fd;
@@ -38,7 +37,6 @@ st.markdown("""
         color: #2E7D32 !important;
     }
     .chat-message strong {
-        color: #333333 !important;
         font-weight: 600;
     }
     
@@ -97,19 +95,6 @@ st.markdown("""
     .stButton button:hover {
         background-color: #1976D2;
         color: white;
-    }
-    
-    /* Общие стили для всего текста в приложении */
-    .stApp {
-        color: #333333 !important;
-    }
-    
-    /* Стили для селектов и других элементов */
-    .stSelectbox select {
-        color: #333333 !important;
-    }
-    .stSelectbox div[data-baseweb="select"] {
-        color: #333333 !important;
     }
 </style>
 """, unsafe_allow_html=True)
