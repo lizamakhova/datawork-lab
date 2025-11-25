@@ -18,14 +18,40 @@ st.markdown("""
         padding: 1rem; 
         border-radius: 0.5rem;
         margin-bottom: 1rem;
+        border: 1px solid #e0e0e0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
     .user-message {
         background-color: #e3f2fd;
         margin-left: 2rem;
+        border-left: 4px solid #2196F3;
+        color: #1565C0;
     }
     .bot-message {
         background-color: #f5f5f5;
         margin-right: 2rem;
+        border-left: 4px solid #4CAF50;
+        color: #2E7D32;
+    }
+    .chat-message strong {
+        color: #333333;
+        font-weight: 600;
+    }
+    .stTextInput input {
+        border: 2px solid #2196F3;
+        border-radius: 8px;
+    }
+    .stButton button {
+        background-color: #2196F3;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        font-weight: 600;
+    }
+    .stButton button:hover {
+        background-color: #1976D2;
+        color: white;
     }
 </style>
 """, unsafe_allow_html=True)
