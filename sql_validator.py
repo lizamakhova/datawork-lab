@@ -61,41 +61,53 @@ class SQLSimulator:
 
     def _execute_select(self, sql_query):
         """Обработка SELECT запросов"""
-        # Парсим базовую структуру SQL
-        select_match = re.search(r'select\s+(.*?)\s+from\s+(\w+)', sql_query.lower())
+        # ОБНОВЛЕНО: Парсим с учетом алиасов
+        select_match = re.search(r'select\s+(.*?)\s+from\s+(\w+)(?:\s+(\w+))?', sql_query.lower())
         if not select_match:
             return None, "❌ Неверный формат SELECT запроса"
             
         columns = select_match.group(1)
         table_name = select_match.group(2)
+        table_alias = select_match.group(3)  # Может быть None
         
         if table_name not in self.tables:
             return None, f"❌ Таблица {table_name} не найдена"
             
         result = self.tables[table_name].copy()
         
-        # Обработка WHERE условий
+        # ОБНОВЛЕНО: Обработка WHERE условий с алиасами
         where_match = re.search(r'where\s+(.*?)(?:\s+order by|\s+group by|\s*$)', sql_query.lower())
         if where_match:
             where_condition = where_match.group(1)
+            # Заменяем алиасы на реальные имена таблиц в WHERE
+            if table_alias:
+                where_condition = where_condition.replace(f'{table_alias}.', '')
             result = self._apply_where_condition(result, where_condition)
         
-        # Обработка JOIN
+        # ОБНОВЛЕНО: Обработка JOIN с алиасами
         if 'join' in sql_query.lower():
-            result = self._apply_joins(sql_query, result)
+            result = self._apply_joins(sql_query, result, table_alias)
         
-        # Выбор колонок
+        # ОБНОВЛЕНО: Выбор колонок с алиасами
         if columns != '*':
-            selected_columns = [col.strip() for col in columns.split(',')]
+            # Удаляем алиасы из названий колонок
+            clean_columns = columns
+            if table_alias:
+                clean_columns = clean_columns.replace(f'{table_alias}.', '')
+            
+            selected_columns = [col.strip().split('.')[-1] for col in clean_columns.split(',')]  # Берем последнюю часть после точки
             missing_cols = [col for col in selected_columns if col not in result.columns]
             if missing_cols:
                 return None, f"❌ Колонки не найдены: {missing_cols}"
             result = result[selected_columns]
         
-        # ORDER BY
+        # ORDER BY с алиасами
         order_match = re.search(r'order by\s+(.*?)\s+(asc|desc)?', sql_query.lower())
         if order_match:
             order_column = order_match.group(1)
+            # Удаляем алиас из названия колонки
+            if table_alias and order_column.startswith(f'{table_alias}.'):
+                order_column = order_column.replace(f'{table_alias}.', '')
             order_asc = order_match.group(2) != 'desc'
             if order_column in result.columns:
                 result = result.sort_values(order_column, ascending=order_asc)
@@ -134,6 +146,9 @@ class SQLSimulator:
     def _apply_simple_condition(self, df, condition):
         """Применение простого условия"""
         condition = condition.strip()
+        
+        # ОБНОВЛЕНО: Удаляем алиасы из условий
+        condition = re.sub(r'\w+\.', '', condition)  # Удаляем "алиас." из условия
         
         # ОБНОВЛЕНО: Обработка IN и NOT IN
         if ' in (' in condition:
@@ -187,27 +202,41 @@ class SQLSimulator:
         
         return df
 
-    def _apply_joins(self, sql_query, base_df):
+    def _apply_joins(self, sql_query, base_df, base_alias):
         """Применение JOIN между таблицами"""
         sql_lower = sql_query.lower()
         
         # INNER JOIN
         if 'inner join' in sql_lower:
-            join_match = re.search(r'inner join\s+(\w+)\s+on\s+(.*?)(?:\s+where|\s+order by|\s*$)', sql_lower)
+            join_match = re.search(r'inner join\s+(\w+)(?:\s+(\w+))?\s+on\s+(.*?)(?:\s+where|\s+order by|\s*$)', sql_lower)
             if join_match:
                 join_table = join_match.group(1)
-                join_condition = join_match.group(2)
+                join_alias = join_match.group(2)  # Может быть None
+                join_condition = join_match.group(3)
                 if join_table in self.tables:
-                    return self._perform_join(base_df, self.tables[join_table], join_condition, 'inner')
+                    # ОБНОВЛЕНО: Удаляем алиасы из условия JOIN
+                    clean_condition = join_condition
+                    if base_alias:
+                        clean_condition = clean_condition.replace(f'{base_alias}.', '')
+                    if join_alias:
+                        clean_condition = clean_condition.replace(f'{join_alias}.', '')
+                    return self._perform_join(base_df, self.tables[join_table], clean_condition, 'inner')
         
         # LEFT JOIN  
         elif 'left join' in sql_lower:
-            join_match = re.search(r'left join\s+(\w+)\s+on\s+(.*?)(?:\s+where|\s+order by|\s*$)', sql_lower)
+            join_match = re.search(r'left join\s+(\w+)(?:\s+(\w+))?\s+on\s+(.*?)(?:\s+where|\s+order by|\s*$)', sql_lower)
             if join_match:
                 join_table = join_match.group(1)
-                join_condition = join_match.group(2)
+                join_alias = join_match.group(2)  # Может быть None
+                join_condition = join_match.group(3)
                 if join_table in self.tables:
-                    return self._perform_join(base_df, self.tables[join_table], join_condition, 'left')
+                    # ОБНОВЛЕНО: Удаляем алиасы из условия JOIN
+                    clean_condition = join_condition
+                    if base_alias:
+                        clean_condition = clean_condition.replace(f'{base_alias}.', '')
+                    if join_alias:
+                        clean_condition = clean_condition.replace(f'{join_alias}.', '')
+                    return self._perform_join(base_df, self.tables[join_table], clean_condition, 'left')
         
         return base_df
 
@@ -216,8 +245,8 @@ class SQLSimulator:
         # Парсим условие JOIN (простая реализация)
         if '=' in condition:
             left_col, right_col = condition.split('=')
-            left_col = left_col.strip().split('.')[-1]
-            right_col = right_col.strip().split('.')[-1]
+            left_col = left_col.strip().split('.')[-1]  # Берем только имя колонки
+            right_col = right_col.strip().split('.')[-1]  # Берем только имя колонки
             
             if left_col in left_df.columns and right_col in right_df.columns:
                 if join_type == 'inner':
