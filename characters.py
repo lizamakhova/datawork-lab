@@ -21,7 +21,7 @@ CHARACTERS_PROFILES = {
 
 def get_ai_response(character_key, user_message):
     try:
-        # Прямой вызов YandexGPT с упрощенными промптами
+        # Прямой вызов YandexGPT
         response = yandex_gpt_client.generate_response(character_key, user_message)
         return response
     except Exception as e:
