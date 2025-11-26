@@ -1,4 +1,4 @@
-from ai_client import yandex_gpt_client
+from ai_client import openai_client  # ✅ Новый OpenAI клиент
 
 CHARACTERS_PROFILES = {
     "alice": {
@@ -20,48 +20,67 @@ CHARACTERS_PROFILES = {
 }
 
 def get_ai_response(character_key, user_message):
+    """Получаем ответ от OpenAI с детальными промптами"""
     try:
-        # Прямой вызов YandexGPT
-        response = yandex_gpt_client.generate_response(character_key, user_message)
+        response = openai_client.generate_response(character_key, user_message)
         return response
     except Exception as e:
-        return get_static_response(character_key, user_message)
+        # Fallback на умные ответы без эмодзи
+        return get_smart_fallback(character_key, user_message)
 
-def get_static_response(character_key, user_message):
+def get_smart_fallback(character_key, user_message):
+    """Умные fallback ответы БЕЗ эмодзи"""
     message_lower = user_message.lower()
     
     if character_key == "alice":
-        if any(word in message_lower for word in ["sql", "запрос", "таблиц", "данн"]):
-            return "Нужно сравнить наши данные и данные из реестра партнеров. Проверить, что нет дубликатов в реестрах."
+        if any(word in message_lower for word in ["прибыль", "выручк", "доход"]):
+            return "Прибыль рассчитывается как сумма успешных операций за вычетом комиссий. Используй processing_operations с status='success', посчитай сумму amount и вычти commission_amount. Если нужны детали - заходи."
+        
         elif any(word in message_lower for word in ["кирилл", "приоритет", "срочн"]):
-            return "Пусть зайдет ко мне за приоритизацией, мы обсудим. Доделай плиз задачу от Максима, она asap"
+            return "Задача от Кирилла может подождать до завтра. Сначала сделай срочное для Максима - он готовит данные для инвесторов к 11:00. Я с ним согласовала приоритеты."
+        
+        elif any(word in message_lower for word in ["статус", "расхожден"]):
+            return "При расхождениях статусов данные партнера всегда приоритетны. У нас success/failed, у PARTNER_A - COMPLETED/DECLINED, у PARTNER_B - SUCCESS/FAILED. Если статусы разные - нужно исправить наши данные через DBA."
+        
+        elif any(word in message_lower for word in ["sql", "запрос", "таблиц"]):
+            return "Лучше попробуй сам написать запрос, а я помогу его улучшить. Например, начни с SELECT * FROM processing_operations WHERE status='success'. Покажи что получилось."
+        
         else:
-            return "Привет! Расскажи подробнее что нужно - помогу разобраться с данными и процессами"
+            return "Интересный вопрос! Давай разберемся подробнее. Что именно ты пытаешься сделать и что уже пробовал?"
     
     elif character_key == "maxim":
-        if any(word in message_lower for word in ["операц", "успешн", "прибыл", "анализ"]):
-            return "за вчера общая сумма. Зайди к Алисе за деталями"
+        if any(word in message_lower for word in ["операц", "успешн", "прибыл"]):
+            return "Нужна общая прибыль за вчера по успешным операциям. ASAP к 11:00 для встречи с инвестороми. За деталями по данным - к Алисе."
+        
         elif any(word in message_lower for word in ["срок", "когда", "врем"]):
-            return "Нужно к 11:00 к встрече. ASAP!"
+            return "Нужно к 11:00 к встрече с инвесторами. ASAP! Если не успеваешь - скажи заранее."
+        
         else:
-            return "Зайди к Алисе за деталями"
+            return "Зайди к Алисе за техническими деталями. Мне нужны готовые цифры для отчетности."
     
     elif character_key == "dba_team":
-        if any(word in message_lower for word in ["исправ", "прав", "update", "insert"]):
-            if any(word in message_lower for word in ["update", "insert"]) and "where" in message_lower:
-                return "Привет! Готово, проверяй"
+        if any(word in message_lower for word in ["update", "insert", "delete"]):
+            if "where" in message_lower and any(word in message_lower for word in ["update", "insert"]):
+                return "Выполнено. Не забудь про бэкапы данных если правишь системные таблицы."
             else:
-                return "Привет! Пришли ответ в корректном формате, пожалуйста. Мы выполняем только скрипты"
+                return "Не могу выполнить в таком виде. Формат: UPDATE|INSERT таблица УСЛОВИЯ. Уточни у Алисы."
         else:
-            return "Привет! Мы выполняем запросы в формате: UPDATE|INSERT таблица УСЛОВИЯ"
+            return "Мы выполняем запросы в формате: UPDATE|INSERT таблица УСЛОВИЯ. Для бизнес-логики обратись к Алисе."
+    
+    elif character_key == "partner_a":
+        if any(word in message_lower for word in ["статус", "расхожден"]):
+            return "Добрый день! Наши статусы: COMPLETED=успех, DECLINED=отказ, IN_PROGRESS=в процессе. Проверим расхождения и вернемся с ответом."
+        else:
+            return "Добрый день! По вопросам реестров и статусов операций - обращайтесь. Чем можем помочь?"
+    
+    elif character_key == "partner_b":
+        if any(word in message_lower for word in ["статус", "расхожден"]):
+            return "Добрый день! Наши статусы: SUCCESS=успех, FAILED=отказ. Проверим данные и предоставим актуальную информацию."
+        else:
+            return "Добрый день! Готовы помочь с вопросами по операциям и реестрам."
     
     else:
-        if any(word in message_lower for word in ["комисс", "расхожден", "реестр", "провер"]):
-            return "Добрый день! Проверим и вернемся"
-        elif any(word in message_lower for word in ["дубл", "два реестр"]):
-            return "Добрый день! Уточним и предоставим ответ"
-        else:
-            return "Добрый день! Чем можем помочь?"
+        return "Давай разберемся с этим вопросом. Расскажи подробнее что именно нужно сделать?"
 
 CHARACTERS_RESPONSES = {
     "alice": {
