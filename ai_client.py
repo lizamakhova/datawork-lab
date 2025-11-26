@@ -10,119 +10,130 @@ class YandexGPTClient:
         self.folder_id = st.secrets.get("YANDEX_FOLDER_ID")
         self.api_url = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
         
-        # Диагностика
-        if not self.api_key:
-            st.error("❌ YANDEX_GPT_API_KEY не найден в Secrets")
-        else:
-            st.success(f"✅ API ключ найден: {self.api_key[:10]}...")
-            
-        if not self.folder_id:
-            st.error("❌ YANDEX_FOLDER_ID не найден в Secrets")
-        else:
-            st.success(f"✅ Folder ID найден: {self.folder_id}")
-    
     def generate_response(self, character, user_message):
-        if not self.api_key or not self.folder_id:
-            st.error("❌ Не могу подключиться к YandexGPT - проверьте Secrets")
-            return self._get_fallback_response(character, user_message)
-        
-        # Показываем индикатор "печатает..."
-        with st.spinner(f"🤔 {self._get_typing_message(character)}"):
-            # Имитируем задержку 2-5 секунд
-            time.sleep(2)
+        # Всегда показываем индикатор для реализма
+        time.sleep(2)  # Задержка для реализма
             
-            try:
-                # КРАТКИЕ промпты которые работают с YandexGPT
-                prompts = {
-                    "alice": "Ты - Алиса, руководитель аналитики. Отвечай как наставник: объясняй концепции, но не давай готовый код. Поддерживающий тон, говори 'если что, заходи' когда отправляешь за информацией. Отвечай на русском.",
-                    "maxim": "Ты - Максим, финансовый директор. Отвечай кратко и по делу. Не давай технические детали - отправляй к Алисе. Говори о сроках и бизнес-задачах. Отвечай на русском.",
-                    "dba_team": "Ты - DBA команда. Отвечай только на SQL запросы в формате UPDATE/INSERT. Будь формальным и техническим. Отвечай на русском.",
-                    "partner_a": "Ты - поддержка Партнера А. Отвечай формально и профессионально. Говори что проверишь и вернешься с ответом. Отвечай на русском.",
-                    "partner_b": "Ты - поддержка Партнера Б. Отвечай формально и профессионально. Говори что проверишь и вернешься с ответом. Отвечай на русском."
-                }
-                
-                prompt = prompts.get(character, "")
-                
-                headers = {
-                    "Authorization": f"Api-Key {self.api_key}",
-                    "Content-Type": "application/json"
-                }
-                
-                payload = {
-                    "modelUri": f"gpt://{self.folder_id}/yandexgpt/latest",
-                    "completionOptions": {
-                        "stream": False,
-                        "temperature": 0.7,
-                        "maxTokens": "300"
-                    },
-                    "messages": [
-                        {
-                            "role": "system", 
-                            "text": prompt
-                        },
-                        {
-                            "role": "user",
-                            "text": user_message
-                        }
-                    ]
-                }
-                
-                st.info("🔄 Отправляю запрос к YandexGPT...")
-                response = requests.post(self.api_url, headers=headers, json=payload, timeout=15)
-                
-                if response.status_code != 200:
-                    st.error(f"❌ Ошибка API: {response.status_code} - {response.text}")
-                    return self._get_fallback_response(character, user_message)
-                
-                response.raise_for_status()
-                
-                result = response.json()
-                generated_text = result['result']['alternatives'][0]['message']['text']
-                
-                st.success("✅ Получен ответ от AI!")
-                
-                # Фильтруем готовые SQL запросы для Алисы
-                if character == "alice":
-                    generated_text = self._filter_sql_queries(generated_text)
-                
-                return generated_text
-                
-            except requests.exceptions.Timeout:
-                st.error("❌ Таймаут подключения к YandexGPT")
-                return self._get_fallback_response(character, user_message)
-            except Exception as e:
-                st.error(f"❌ Ошибка YandexGPT: {str(e)}")
-                return self._get_fallback_response(character, user_message)
+        # Пробуем YandexGPT
+        ai_response = self._try_yandex_gpt(character, user_message)
+        if ai_response and ai_response != self._get_fallback_response(character, user_message):
+            return ai_response + " 🚀"  # Добавляем маркер AI ответа
+        
+        # Если AI не сработал - умный fallback
+        return self._get_smart_fallback(character, user_message)
     
-    def _get_typing_message(self, character):
-        messages = {
-            "alice": "Алиса думает...",
-            "maxim": "Максим печатает...", 
-            "dba_team": "DBA команда проверяет запрос...",
-            "partner_a": "Партнер А проверяет информацию...",
-            "partner_b": "Партнер Б уточняет детали..."
+    def _try_yandex_gpt(self, character, user_message):
+        """Пытаемся получить ответ от YandexGPT"""
+        if not self.api_key or not self.folder_id:
+            st.error("❌ API ключи не настроены в Secrets")
+            return None
+        
+        try:
+            # ПРОБУЕМ РАЗНЫЕ МОДЕЛИ
+            models = [
+                f"gpt://{self.folder_id}/yandexgpt-lite",
+                f"gpt://{self.folder_id}/yandexgpt",
+                f"gpt://{self.folder_id}/yandexgpt/latest"
+            ]
+            
+            for model_uri in models:
+                try:
+                    response = self._make_api_request(model_uri, character, user_message)
+                    if response:
+                        st.success(f"✅ AI ответ получен (модель: {model_uri.split('/')[-1]})")
+                        return self._filter_sql_queries(response, character)
+                except Exception as e:
+                    st.warning(f"⚠️ Модель {model_uri.split('/')[-1]} не сработала: {str(e)}")
+                    continue
+            
+            st.error("❌ Все модели YandexGPT недоступны")
+            return None
+            
+        except Exception as e:
+            st.error(f"❌ Критическая ошибка YandexGPT: {str(e)}")
+            return None
+    
+    def _make_api_request(self, model_uri, character, user_message):
+        """Делаем API запрос"""
+        prompts = {
+            "alice": "Ты - Алиса, руководитель аналитики. Отвечай как наставник, объясняй концепции, но не давай готовый код. Поддерживающий тон. Отвечай на русском.",
+            "maxim": "Ты - Максим, финансовый директор. Отвечай кратко и по делу. Бизнес-ориентированный. Отвечай на русском.",
+            "dba_team": "Ты - DBA команда. Формальный и технический. Отвечай на русском.",
+            "partner_a": "Ты - поддержка Партнера А. Формальный и профессиональный. Отвечай на русском.",
+            "partner_b": "Ты - поддержка Партнера Б. Формальный и профессиональный. Отвечай на русском."
         }
-        return messages.get(character, "Печатает...")
+        
+        headers = {
+            "Authorization": f"Api-Key {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "modelUri": model_uri,
+            "completionOptions": {
+                "stream": False,
+                "temperature": 0.7,
+                "maxTokens": "300"
+            },
+            "messages": [
+                {
+                    "role": "system", 
+                    "text": prompts.get(character, "")
+                },
+                {
+                    "role": "user",
+                    "text": user_message
+                }
+            ]
+        }
+        
+        response = requests.post(self.api_url, headers=headers, json=payload, timeout=10)
+        response.raise_for_status()
+        
+        result = response.json()
+        return result['result']['alternatives'][0]['message']['text']
     
-    def _filter_sql_queries(self, text):
-        """Убираем готовые SQL запросы из ответов Алисы"""
-        if re.search(r'(SELECT|INSERT|UPDATE|DELETE)\s+.+\s+(FROM|INTO|SET|WHERE)', text, re.IGNORECASE):
-            return "Попробуй сам написать запрос. Если что-то не получается - покажи свой вариант, помогу разобраться."
-        return text
-    
-    def _get_fallback_response(self, character, user_message):
-        """Умные fallback ответы"""
+    def _get_smart_fallback(self, character, user_message):
+        """УМНЫЕ fallback ответы с контекстом"""
         message_lower = user_message.lower()
         
         if character == "alice":
-            if "прибыль" in message_lower:
-                return "Прибыль можно посчитать как сумму успешных операций за вычетом комиссий. Используй таблицу processing_operations с status='success'. Если что, заходи - помогу разобраться с деталями!"
-            elif any(word in message_lower for word in ["sql", "запрос"]):
-                return "Для работы с данными используй основные таблицы: processing_operations, partner_a_payments, partner_b_payments. Связывай их через operation_additional_data."
+            if any(word in message_lower for word in ["привет", "здравств", "начать"]):
+                return "Привет! Рада тебя видеть. Расскажи что нужно сделать - помогу разобраться с данными, бизнес-логикой или процессами работы. 🤗"
+            
+            elif "прибыль" in message_lower:
+                return "Прибыль рассчитывается как сумма успешных операций за вычетом комиссий. Используй processing_operations с status='success', посчитай сумму amount и вычти commission_amount. Если нужны детали - заходи! 💰"
+            
+            elif any(word in message_lower for word in ["дай запрос", "напиши sql", "готовый"]):
+                return "Лучше попробуй сам написать запрос, а я помогу его улучшить. Например, начни с SELECT * FROM processing_operations WHERE status='success'. Покажи что получилось! 💻"
+            
+            elif any(word in message_lower for word in ["связать", "join", "таблиц"]):
+                return "Таблицы связываются через operation_additional_data. processing_operations → operation_additional_data → partner_a_payments. Ключевое поле - partner_operation_id. Проверь схему базы данных для точных названий полей. 🔗"
+            
+            elif any(word in message_lower for word in ["статус", "расхожден"]):
+                return "При расхождениях статусов данные партнера всегда приоритетны. У нас success/failed, у PARTNER_A - COMPLETED/DECLINED. Если статусы разные - нужно исправить наши данные через DBA. ⚠️"
+            
             else:
-                return "Давай разберемся с этим вопросом. Расскажи подробнее что именно нужно сделать?"
+                return "Интересный вопрос! Давай разберемся подробнее. Что именно ты пытаешься сделать и что уже пробовал? 🤔"
         
-        return "Чем могу помочь?"
+        elif character == "maxim":
+            if "прибыль" in message_lower:
+                return "Нужна общая прибыль за вчера по успешным операциям. ASAP к 11:00 для встречи с инвесторами. За деталями по данным - к Алисе. 📊"
+            else:
+                return "Зайди к Алисе за техническими деталями. Мне нужны готовые цифры для отчетности. 🎯"
+        
+        return "Чем могу помочь? 💬"
+    
+    def _filter_sql_queries(self, text, character):
+        """Фильтруем SQL только для Алисы"""
+        if character == "alice":
+            if re.search(r'(SELECT|INSERT|UPDATE|DELETE)\s+.+\s+(FROM|INTO|SET|WHERE)', text, re.IGNORECASE):
+                return "Вижу что ты просишь готовый запрос! Попробуй сам написать, а я помогу его улучшить. Это лучший способ научиться. Покажи свой вариант! 💪"
+        return text
+    
+    def _get_fallback_response(self, character, user_message):
+        """Простой fallback"""
+        return "Давай разберемся с этим вопросом. Расскажи подробнее что именно нужно сделать?"
 
 # Глобальный клиент
 yandex_gpt_client = YandexGPTClient()
