@@ -73,7 +73,7 @@ DEMO_DATABASE = {
     ]
 }
 
-# Расчет комиссий
+# Расчет комиссий и выручки
 def calculate_commissions():
     for op in DEMO_DATABASE["processing_operations"]:
         if op["status"] == "success" and op["commission_amount"] is None:
