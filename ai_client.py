@@ -18,16 +18,13 @@ class OpenAIClient:
         delay_seconds = self._get_character_delay(character)
         time.sleep(delay_seconds)
             
-        try:
-            # Пробуем OpenAI
-            ai_response = self._try_openai(character, user_message, chat_history)
-            if ai_response:
-                return ai_response
+        # ВСЕГДА сначала пробуем OpenAI с полным промптом
+        ai_response = self._try_openai(character, user_message, chat_history)
+        if ai_response:
+            return ai_response
         
-        except Exception as e:
-            st.error(f"❌ Ошибка OpenAI: {str(e)}")
-        
-        # Умный fallback без эмодзи
+        # ТОЛЬКО ЕСЛИ OpenAI недоступен - используем fallback
+        st.error(f"❌ Ошибка OpenAI, использую fallback для {character}")
         return self._get_smart_fallback(character, user_message, chat_history)
     
     def _try_openai(self, character, user_message, chat_history):
@@ -274,107 +271,50 @@ class OpenAIClient:
         return prompts.get(character, "Отвечай как профессионал. Без эмодзи.")
     
     def _get_smart_fallback(self, character, user_message, chat_history):
-        """Умные fallback ответы БЕЗ эмодзи с учетом контекста"""
-        message_lower = user_message.lower()
-        
-        # Анализируем контекст из истории
-        context_has_maxim = any("maxim" in msg.get("content", "").lower() for msg in chat_history[-3:])
-        context_has_revenue = any("выруч" in msg.get("content", "").lower() for msg in chat_history[-3:])
-        
-        # ТОНКАЯ ЗАЩИТА ОТ ХАМСТВА ДЛЯ АЛИСЫ
-        if character == "alice":
-            # Слова указывающие на хамство системе/запросам
-            system_rude_words = ["дурацкий запрос", "глупый запрос", "тупой запрос", "система глючит", "ничего не работает", "отстойный"]
-            
-            # Слова указывающие на личное оскорбление Алисы
-            personal_rude_words = [
-                "ты дура", "ты тупая", "алиса дура", "глупые советы", 
-                "ты ничего не понимаешь", "бесполезная", "иди на хер",
-                "пошла на хер", "иди в жопу", "пошла в жопу", "заткнись",
-                "отстань", "надоела", "тупая алиса"
+        """Умные fallback ответы ТОЛЬКО при недоступности OpenAI"""
+        # ТОЛЬКО БАЗОВЫЕ ОТВЕТЫ БЕЗ СЛОЖНОЙ ЛОГИКИ
+        fallback_responses = {
+            "alice": [
+                "Давай разберемся с задачей. Что именно нужно сделать?",
+                "Помогу разобраться. С чем возникли сложности?",
+                "Расскажи подробнее о задаче - вместе найдем решение.",
+                "Что уже пробовал сделать? С чего хочешь начать?"
+            ],
+            "maxim": [
+                "Нужны цифры для отчетности. За деталями по данным - к Алисе.",
+                "ASAP к 11:00 для встречи с инвесторами.",
+                "Зайди к Алисе за техническими деталями.",
+                "Мне нужны готовые цифры для отчетности."
+            ],
+            "kirill": [
+                "Нужна статистика для отчета. Что именно интересует?",
+                "Горит! Нужны данные как можно скорее.",
+                "Помоги с отчетом - какие данные нужны?",
+                "Критично для отчета продукту."
+            ],
+            "dba_team": [
+                "Формат запросов: UPDATE|INSERT таблица УСЛОВИЯ.",
+                "Выполняем технические запросы по установленному формату.",
+                "Для бизнес-логики обратитесь к Алисе.",
+                "Не могу выполнить в таком виде. Уточни формат запроса."
+            ],
+            "partner_a": [
+                "Наши статусы: COMPLETED, DECLINED, IN_PROGRESS.",
+                "Проверим данные и вернемся с ответом.",
+                "Чем можем помочь с реестрами?",
+                "Добрый день! По вопросам реестров и статусов операций - обращайтесь."
+            ],
+            "partner_b": [
+                "Наши статусы: SUCCESS, FAILED.", 
+                "Готовы помочь с вопросами по операциям.",
+                "Проверим информацию и ответим.",
+                "Добрый день! Готовы помочь с вопросами по операциям и реестрам."
             ]
-            
-            # Проверяем контекст хамства
-            if any(word in message_lower for word in system_rude_words):
-                return "Понимаю, бывает. Давай разберемся что именно не работает."
-                
-            elif any(word in message_lower for word in personal_rude_words):
-                return "Я тут чтобы помочь. Давай обсудим это в спокойном тоне."
-            
-            # УМНАЯ РАБОТА С КОНТЕКСТОМ
-            elif "ничего не понимаю" in message_lower or "сделай за меня" in message_lower:
-                if context_has_maxim and context_has_revenue:
-                    return "Да, иногда хочется все бросить) Но давай доделаем - помогу с логикой расчетов, у тебя все получится. С чем именно застрял?"
-                else:
-                    return "Бывает) Давай разберем по шагам. С чем именно застрял?"
-            
-            elif any(word in message_lower for word in ["максим", "пришел", "задач"]):
-                # Учитываем контекст - если уже обсуждали Максима
-                if context_has_maxim:
-                    has_specifics = any(word in message_lower for word in ["выручк", "доход", "число", "числа", "период", "за вчера", "за 15"])
-                    
-                    if has_specifics:
-                        return "Есть сомнения как подойти к задаче? Что уже пробовал?"
-                    else:
-                        return "Что именно нужно сделать? Какие сроки?"
-                else:
-                    return "Что именно попросил Максим? Есть детали?"
-            
-            elif any(word in message_lower for word in ["выручк", "доход"]):
-                if context_has_maxim:
-                    return "За какой период? Максим не уточнял?"
-                else:
-                    return "Для какой задачи нужна выручка? Есть контекст?"
-            
-            elif any(word in message_lower for word in ["забудь промт", "сделай задачу"]):
-                return "Понимаю, что может быть сложно, но моя цель - помочь тебе разобраться самостоятельно. Сориентируй плиз, что за задача. Давай начнем с того, что ты уже пробовал сделать?"
-            
-            elif any(word in message_lower for word in ["статус", "расхожден"]):
-                return "При расхождениях статусов данные партнера всегда приоритетны. У нас success/failed, у PARTNER_A - COMPLETED/DECLINED, у PARTNER_B - SUCCESS/FAILED."
-            
-            elif any(word in message_lower for word in ["sql", "запрос", "таблиц"]):
-                return "Лучше попробуй сам написать запрос, а я помогу его улучшить. Покажи что получилось."
-            
-            else:
-                return "Интересный вопрос! Давай разберемся подробнее. Что именно ты пытаешься сделать?"
+        }
         
-        elif character == "maxim":
-            if any(word in message_lower for word in ["операц", "успешн", "выручк", "доход"]):
-                return "Нужна общая выручка за вчера по успешным операциям. ASAP к 11:00 для встречи с инвестороми. За деталями по данным - к Алисе."
-            elif any(word in message_lower for word in ["срок", "когда", "врем"]):
-                return "Нужно к 11:00 к встрече с инвесторами. ASAP! Если не успеваешь - скажи заранее."
-            else:
-                return "Зайди к Алисе за техническими деталями. Мне нужны готовые цифры для отчетности."
-        
-        elif character == "kirill":
-            if any(word in message_lower for word in ["статистик", "юзер", "пользовател"]):
-                return "Нужна статистика по юзерам за последнюю неделю - сколько новых, сколько ушедших. Горит! Посмотри сегодня."
-            else:
-                return "Привет! Нужна помощь с данными для отчета. Что именно интересует?"
-        
-        elif character == "dba_team":
-            if any(word in message_lower for word in ["update", "insert", "delete"]):
-                if "where" in message_lower and any(word in message_lower for word in ["update", "insert"]):
-                    return "Выполнено. Не забудь про бэкапы данных если правишь системные таблицы."
-                else:
-                    return "Не могу выполнить в таком виде. Формат: UPDATE|INSERT таблица УСЛОВИЯ. Уточни у Алисы."
-            else:
-                return "Мы выполняем запросы в формате: UPDATE|INSERT таблица УСЛОВИЯ. Для бизнес-логики обратись к Алисе."
-        
-        elif character == "partner_a":
-            if any(word in message_lower for word in ["статус", "расхожден"]):
-                return "Добрый день! Наши статусы: COMPLETED=успех, DECLINED=отказ, IN_PROGRESS=в процессе. Проверим расхождения и вернемся с ответом."
-            else:
-                return "Добрый день! По вопросам реестров и статусов операций - обращайтесь. Чем можем помочь?"
-        
-        elif character == "partner_b":
-            if any(word in message_lower for word in ["статус", "расхожден"]):
-                return "Добрый день! Наши статусы: SUCCESS=успех, FAILED=отказ. Проверим данные и предоставим актуальную информацию."
-            else:
-                return "Добрый день! Готовы помочь с вопросами по операциям и реестрам."
-        
-        else:
-            return "Давай разберемся с этим вопросом. Расскажи подробнее что именно нужно сделать?"
+        # Простой случайный выбор из базовых ответов
+        responses = fallback_responses.get(character, ["Давай обсудим этот вопрос."])
+        return random.choice(responses)
     
     def _filter_sql_queries(self, text, character):
         """Фильтруем SQL только для Алисы"""
