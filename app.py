@@ -220,7 +220,7 @@ def sql_sandbox():
     
     with tab1:
         sql_query = st.text_area("SQL запрос:", height=150, 
-                               placeholder="SELECT * FROM processing_operations WHERE status = 'success'")
+                               placeholder="SELECT SUM(amount - commission_amount) as выручка FROM processing_operations WHERE status = 'success'")
         
         if st.button("Выполнить запрос"):
             if sql_query:
