@@ -158,10 +158,16 @@ class SQLSimulator:
 
     def _apply_where_condition(self, df, condition):
         try:
+            # НОРМАЛИЗУЕМ условие - заменяем SQL операторы на Python
             condition = condition.replace('<>', '!=').replace('=', '==')
+            
+            # УДАЛЯЕМ все оставшиеся алиасы таблиц
             condition = re.sub(r'\b\w+\.\s*(\w+)', r'\1', condition)
+            
+            # Безопасное выполнение условия
             return df.query(condition, engine='python')
         except Exception as e:
+            # Fallback на ручную обработку
             return self._manual_where_apply(df, condition)
 
     def _manual_where_apply(self, df, condition):
@@ -197,15 +203,17 @@ class SQLSimulator:
             values = [v.strip().strip("'") for v in values_str.split(',')]
             return df[~df[col].astype(str).isin(values)]
         
-        for operator in ['==', '!=', '>=', '<=', '>', '<', ' like ']:
+        # ОБНОВЛЕНО: Обработка разных операторов включая <>
+        for operator in ['==', '!=', '<>', '>=', '<=', '>', '<', ' like ']:
             if operator in condition:
                 col, value = condition.split(operator)
                 col = col.strip()
                 value = value.strip().strip("'")
                 
+                # ОБНОВЛЕНО: Оба оператора != и <> обрабатываются как "не равно"
                 if operator == '==':
                     return df[df[col].astype(str) == value]
-                elif operator == '!=':
+                elif operator in ['!=', '<>']:  # Обрабатывает и != и <>
                     return df[df[col].astype(str) != value]
                 elif operator == '>':
                     try:
