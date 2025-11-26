@@ -23,12 +23,12 @@ KNOWLEDGE_BASE = {
         - Правильное действие: Исправить наш статус на `failed`
         """
     },
-    "commission_calculation": {
-        "title": "🧮 Расчет комиссий",
+    "revenue_calculation": {
+        "title": "🧮 Расчет выручки",
         "content": """
-        ## Формула расчета комиссий:
+        ## Формула расчета выручки:
         ```
-        Комиссия = amount * commission_percent + fixed_commission
+        Выручка = amount - commission_amount
         ```
 
         ## Таблица ставок комиссий:
@@ -43,13 +43,13 @@ KNOWLEDGE_BASE = {
         3. **Запросить корректирующий реестр** у партнера
         4. **Дождаться официального исправления**
 
-        ### 🎯 Пример проверки:
+        ### 🎯 Пример проверки выручки:
         ```sql
         SELECT p.processing_id, p.amount, p.commission_amount,
-               (p.amount * cr.commission_percent + cr.fixed_commission) as calculated
+               (p.amount - p.commission_amount) as выручка
         FROM processing_operations p
-        JOIN commission_rates cr ON p.partner_contract_id = cr.partner_contract_id
-        WHERE ABS(p.commission_amount - (p.amount * cr.commission_percent + cr.fixed_commission)) > 0.01
+        WHERE p.status = 'success'
+        AND p.created_date = '2025-01-15'
         ```
         """
     },
