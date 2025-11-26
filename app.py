@@ -74,6 +74,16 @@ st.markdown("""
         --bot-bg: #22543D;
         --strong-text: #F7FAFC;
     }
+    
+    .ai-badge {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 0.7rem;
+        margin-left: 8px;
+        font-weight: 600;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -141,26 +151,69 @@ def display_chat(character_key):
         st.subheader(f"💬 {character['name']}")
         st.caption(f"{character['description']} • {character['members']}")
     
+    # Показываем всю историю чата
     for msg in st.session_state.chats[character_key]:
         if msg['role'] == 'user':
             st.markdown(f"<div class='chat-message user-message'><strong>Вы:</strong> {msg['content']}</div>", unsafe_allow_html=True)
         else:
-            st.markdown(f"<div class='chat-message bot-message'><strong>{character['name']}:</strong> {msg['content']}</div>", unsafe_allow_html=True)
+            # Добавляем бейдж AI к ответам
+            ai_badge = " <span class='ai-badge'>AI</span>" if msg.get('ai_generated', False) else ""
+            st.markdown(f"<div class='chat-message bot-message'><strong>{character['name']}:</strong>{ai_badge} {msg['content']}</div>", unsafe_allow_html=True)
     
+    # Поле ввода
     with st.form(key=f'chat_form_{character_key}', clear_on_submit=True):
         user_input = st.text_input("Ваше сообщение:", key=f"input_{character_key}")
         submitted = st.form_submit_button("Отправить")
         
         if submitted and user_input:
-            st.session_state.chats[character_key].append({'role': 'user', 'content': user_input})
+            # НЕМЕДЛЕННО добавляем сообщение пользователя
+            st.session_state.chats[character_key].append({
+                'role': 'user', 
+                'content': user_input
+            })
             
-            if character_key in CHARACTERS_RESPONSES:
-                response = CHARACTERS_RESPONSES[character_key]['get_response'](user_input)
-            else:
-                response = GROUP_CHATS[character_key]['get_response'](user_input)
+            # Сохраняем сообщение для обработки AI
+            st.session_state[f'pending_response_{character_key}'] = user_input
             
-            st.session_state.chats[character_key].append({'role': 'bot', 'content': response})
+            # Перезагружаем чтобы показать сообщение пользователя
             st.rerun()
+
+def process_ai_response(character_key):
+    """Обрабатываем AI ответ после того как сообщение пользователя уже показано"""
+    if (f'pending_response_{character_key}' in st.session_state and 
+        st.session_state[f'pending_response_{character_key}']):
+        
+        user_message = st.session_state[f'pending_response_{character_key}']
+        
+        # Получаем ответ от AI
+        with st.spinner(f"🤔 {get_typing_message(character_key)}"):
+            if character_key in CHARACTERS_RESPONSES:
+                response = CHARACTERS_RESPONSES[character_key]['get_response'](user_message)
+            else:
+                response = GROUP_CHATS[character_key]['get_response'](user_message)
+        
+        # Добавляем ответ в историю с пометкой AI
+        st.session_state.chats[character_key].append({
+            'role': 'bot',
+            'content': response,
+            'ai_generated': True  # Помечаем как AI ответ
+        })
+        
+        # Сбрасываем флаг ожидания
+        st.session_state[f'pending_response_{character_key}'] = None
+        
+        # Перезагружаем чтобы показать ответ
+        st.rerun()
+
+def get_typing_message(character_key):
+    messages = {
+        "alice": "Алиса печатает...",
+        "maxim": "Максим просматривает задачу...", 
+        "dba_team": "DBA команда проверяет запрос...",
+        "partner_a": "Партнер А уточняет информацию...",
+        "partner_b": "Партнер Б консультируется с отделом..."
+    }
+    return messages.get(character_key, "Думает...")
 
 def sql_sandbox():
     tab1, tab2 = st.tabs(["🔧 SQL Редактор", "🗃️ Схема БД"])
@@ -240,7 +293,12 @@ def main():
         }
         
         selected_chat = chat_map[chat_type]
+        
+        # Сначала показываем чат с текущей историей
         display_chat(selected_chat)
+        
+        # Затем обрабатываем AI ответ если есть ожидающее сообщение
+        process_ai_response(selected_chat)
         
     elif page == "🔧 SQL Песочница":
         sql_sandbox()
