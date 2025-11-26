@@ -211,6 +211,16 @@ class OpenAIClient:
             
             elif any(word in message_lower for word in ["статус", "расхожден"]):
                 return "При расхождениях статусов данные партнера всегда приоритетны. У нас success/failed, у PARTNER_A - COMPLETED/DECLINED, у PARTNER_B - SUCCESS/FAILED. Если статусы разные - нужно исправить наши данные через DBA."
+
+            elif any(word in message_lower for word in ["максим", "кирилл", "пришел", "задач"]):
+            # Случайный выбор одного уточняющего вопроса
+              questions = [
+              "Уточнял ли срочность задачи?",
+              "За какой период нужно посчитать?",
+              "В чем нужна помощь с выполнением?",
+              "Какие данные требуются для задачи?"
+                        ]
+                return random.choice(questions)
             
             elif any(word in message_lower for word in ["sql", "запрос", "таблиц"]):
                 return "Лучше попробуй сам написать запрос, а я помогу его улучшить. Например, начни с SELECT * FROM processing_operations WHERE status='success'. Покажи что получилось."
