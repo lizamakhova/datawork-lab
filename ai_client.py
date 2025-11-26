@@ -2,6 +2,7 @@ import os
 import streamlit as st
 import requests
 import json
+import re  # ← ДОБАВЛЯЕМ ЭТОТ IMPORT
 
 class YandexGPTClient:
     def __init__(self):
