@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import random
 from database import DEMO_DATABASE
 from characters import CHARACTERS_RESPONSES, CHARACTERS_PROFILES, GROUP_CHATS
 from sql_validator import validate_sql_query
@@ -185,6 +186,40 @@ def process_ai_response(character_key):
         
         user_message = st.session_state[f'pending_response_{character_key}']
         
+        # ПРОВЕРКА НА ПОВТОРНЫЕ СООБЩЕНИЯ
+        chat_history = st.session_state.chats[character_key]
+        if len(chat_history) >= 2:
+            last_user_message = None
+            # Ищем последнее сообщение пользователя
+            for msg in reversed(chat_history[:-1]):  # Исключаем текущее сообщение
+                if msg['role'] == 'user':
+                    last_user_message = msg['content']
+                    break
+            
+            # Если сообщение повторяется
+            if last_user_message and user_message.strip().lower() == last_user_message.strip().lower():
+                repeat_responses = {
+                    "alice": [
+                        "Переформулируй вопрос, пожалуйста. Пока не понимаю, как тебе помочь",
+                        "Ошиблась?)) Можешь по-другому спросить?",
+                        "Уточни, пожалуйста, что именно нужно. Так я смогу лучше помочь"
+                    ],
+                    "maxim": ["Повтор. Уточни задачу", "Дублируешь. Конкретизируй"],
+                    "dba_team": ["Запрос дублируется. Уточни формат", "Повтор. Проверь синтаксис"],
+                    "partner_a": ["Повторяющийся вопрос. Уточни детали", "Дублирующий запрос. Конкретизируй"],
+                    "partner_b": ["Повторяющийся вопрос. Уточни детали", "Дублирующий запрос. Конкретизируй"]
+                }
+                
+                response = random.choice(repeat_responses.get(character_key, ["Повтор"]))
+                st.session_state.chats[character_key].append({
+                    'role': 'bot',
+                    'content': response,
+                    'ai_generated': True
+                })
+                st.session_state[f'pending_response_{character_key}'] = None
+                st.rerun()
+                return
+        
         # Получаем ответ от AI
         with st.spinner(f"🤔 {get_typing_message(character_key)}"):
             if character_key in CHARACTERS_RESPONSES:
@@ -196,13 +231,10 @@ def process_ai_response(character_key):
         st.session_state.chats[character_key].append({
             'role': 'bot',
             'content': response,
-            'ai_generated': True  # Помечаем как AI ответ
+            'ai_generated': True
         })
         
-        # Сбрасываем флаг ожидания
         st.session_state[f'pending_response_{character_key}'] = None
-        
-        # Перезагружаем чтобы показать ответ
         st.rerun()
 
 def get_typing_message(character_key):
