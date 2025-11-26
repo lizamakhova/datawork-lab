@@ -50,7 +50,7 @@ DATABASE_SCHEMA = {
             "processing_id": {
                 "type": "VARCHAR", 
                 "fk": "processing_operations",
-                "description": "Связь с нашей операцией (может быть NULL)"
+                "description": "Уникальный ID операции в нашей системе"
             },
             "status": {
                 "type": "VARCHAR", 
@@ -81,7 +81,7 @@ DATABASE_SCHEMA = {
             },
             "commission": {
                 "type": "DECIMAL(10,2)", 
-                "description": "Комиссия указанная в реестре партнера"
+                "description": "Комиссия указанная в реестра партнера"
             },
             "registry_id": {
                 "type": "VARCHAR", 
@@ -96,7 +96,7 @@ DATABASE_SCHEMA = {
             "processing_id": {
                 "type": "VARCHAR", 
                 "fk": "processing_operations",
-                "description": "Связь с нашей операцией"
+                "description": "Уникальный ID операции в нашей системе"
             },
             "created_date": {
                 "type": "DATE", 
