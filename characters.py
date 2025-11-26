@@ -1,3 +1,5 @@
+import random
+
 from ai_client import openai_client  # ✅ Новый OpenAI клиент
 
 CHARACTERS_PROFILES = {
@@ -33,11 +35,23 @@ def get_smart_fallback(character_key, user_message):
     message_lower = user_message.lower()
     
     if character_key == "alice":
-        if any(word in message_lower for word in ["прибыль", "выручк", "доход"]):
-            return "Прибыль рассчитывается как сумма успешных операций за вычетом комиссий. Используй processing_operations с status='success', посчитай сумму amount и вычти commission_amount. Если нужны детали - заходи."
+        if any(word in message_lower for word in ["максим", "кирилл", "пришел", "задач"]):
+            questions = [
+                "Уточнял ли срочность задачи?",
+                "За какой период нужно посчитать?",
+                "В чем нужна помощь с выполнением?",
+                "Какие данные требуются для задачи?"
+            ]
+            return random.choice(questions)
         
-        elif any(word in message_lower for word in ["кирилл", "приоритет", "срочн"]):
-            return "Задача от Кирилла может подождать до завтра. Сначала сделай срочное для Максима - он готовит данные для инвесторов к 11:00. Я с ним согласовала приоритеты."
+        elif any(word in message_lower for word in ["выручк", "доход"]):
+            questions = [
+                "Есть сомнения как считать выручку? Какие есть версии расчета?",
+                "С чем нужна помощь в расчетах? Какие данные уже смотрел?",
+                "Как думаешь подойти к расчету? Нужен совет по структуре запроса?",
+                "Что именно вызывает сложности? Данные, логика или сроки?"
+            ]
+            return random.choice(questions)
         
         elif any(word in message_lower for word in ["статус", "расхожден"]):
             return "При расхождениях статусов данные партнера всегда приоритетны. У нас success/failed, у PARTNER_A - COMPLETED/DECLINED, у PARTNER_B - SUCCESS/FAILED. Если статусы разные - нужно исправить наши данные через DBA."
@@ -49,8 +63,8 @@ def get_smart_fallback(character_key, user_message):
             return "Интересный вопрос! Давай разберемся подробнее. Что именно ты пытаешься сделать и что уже пробовал?"
     
     elif character_key == "maxim":
-        if any(word in message_lower for word in ["операц", "успешн", "прибыл"]):
-            return "Нужна общая прибыль за вчера по успешным операциям. ASAP к 11:00 для встречи с инвестороми. За деталями по данным - к Алисе."
+        if any(word in message_lower for word in ["операц", "успешн", "выручк", "доход"]):
+            return "Нужна общая выручка за вчера по успешным операциям. ASAP к 11:00 для встречи с инвестороми. За деталями по данным - к Алисе."
         
         elif any(word in message_lower for word in ["срок", "когда", "врем"]):
             return "Нужно к 11:00 к встрече с инвесторами. ASAP! Если не успеваешь - скажи заранее."
