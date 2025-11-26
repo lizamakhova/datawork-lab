@@ -13,116 +13,85 @@ st.set_page_config(
     layout="wide"
 )
 
-# Исправленные стили - ТОЛЬКО для полей ввода
+# Универсальные стили для светлой/темной темы
 st.markdown("""
 <style>
-    /* Стили для сообщений чата */
     .chat-message {
         padding: 1rem; 
-        border-radius: 0.5rem;
+        border-radius: 12px;
         margin-bottom: 1rem;
-        border: 1px solid #e0e0e0;
+        border: 1px solid var(--border-color, #e0e0e0);
+        background: var(--message-bg, white);
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        color: var(--text-color, #333333) !important;
     }
     .user-message {
-        background-color: #e3f2fd;
-        margin-left: 2rem;
-        border-left: 4px solid #2196F3;
-        color: #1565C0 !important;
+        margin-left: 3rem;
+        border-left: 4px solid var(--user-accent, #4A90E2);
+        background: var(--user-bg, #F0F8FF);
     }
     .bot-message {
-        background-color: #f5f5f5;
-        margin-right: 2rem;
-        border-left: 4px solid #4CAF50;
-        color: #2E7D32 !important;
+        margin-right: 3rem; 
+        border-left: 4px solid var(--bot-accent, #2AB27B);
+        background: var(--bot-bg, #F6FFFE);
     }
     .chat-message strong {
+        color: var(--strong-text, #1D1C1D) !important;
         font-weight: 600;
     }
     
-    /* Стили для полей ввода текста в чатах */
-    .stTextInput input {
-        border: 1px solid #ccc;
-        border-radius: 8px;
-        padding: 8px 12px;
-        background: #fafafa !important;
-        font-size: 14px;
-        transition: all 0.2s ease;
-        color: #333333 !important;  /* Явно задаем цвет текста */
-    }
-    .stTextInput input:focus {
-        border-color: #2196F3;
-        background: white !important;
-        box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.1);
-        outline: none;
-        color: #333333 !important;  /* Цвет текста при фокусе */
-    }
-    .stTextInput input::placeholder {
-        color: #666666 !important;  /* Цвет placeholder */
+    :root {
+        --border-color: #e0e0e0;
+        --message-bg: white;
+        --text-color: #333333;
+        --user-accent: #4A90E2;
+        --user-bg: #F0F8FF;
+        --bot-accent: #2AB27B; 
+        --bot-bg: #F6FFFE;
+        --strong-text: #1D1C1D;
     }
     
-    /* Стили для текстовых областей (SQL запросы) */
-    .stTextArea textarea {
-        border: 1px solid #ccc !important;
-        border-radius: 8px !important;
-        padding: 12px !important;
-        background: #fafafa !important;
-        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace !important;
-        font-size: 14px !important;
-        transition: all 0.2s ease !important;
-        color: #333333 !important;  /* Явно задаем цвет текста */
-    }
-    .stTextArea textarea:focus {
-        border-color: #2196F3 !important;
-        background: white !important;
-        box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.1) !important;
-        outline: none !important;
-        color: #333333 !important;  /* Цвет текста при фокусе */
-    }
-    .stTextArea textarea::placeholder {
-        color: #666666 !important;  /* Цвет placeholder */
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --border-color: #444444;
+            --message-bg: #2D3748;
+            --text-color: #E2E8F0;
+            --user-accent: #63B3ED;
+            --user-bg: #2A4365;
+            --bot-accent: #68D391;
+            --bot-bg: #22543D;
+            --strong-text: #F7FAFC;
+        }
     }
     
-    /* Стили для кнопок */
-    .stButton button {
-        background-color: #2196F3;
-        color: white;
-        border: none;
-        border-radius: 8px;
-        padding: 0.5rem 1rem;
-        font-weight: 600;
-    }
-    .stButton button:hover {
-        background-color: #1976D2;
-        color: white;
+    .stApp[data-theme="dark"] {
+        --border-color: #444444;
+        --message-bg: #2D3748;
+        --text-color: #E2E8F0;
+        --user-accent: #63B3ED;
+        --user-bg: #2A4365;
+        --bot-accent: #68D391;
+        --bot-bg: #22543D;
+        --strong-text: #F7FAFC;
     }
 </style>
 """, unsafe_allow_html=True)
 
 def initialize_chat():
-    """Инициализация истории чатов"""
     if 'chats' not in st.session_state:
         st.session_state.chats = {
-            'alice': [],
-            'maxim': [],
-            'dba_team': [],
-            'partner_a': [],
-            'partner_b': []
+            'alice': [], 'maxim': [], 'dba_team': [], 
+            'partner_a': [], 'partner_b': []
         }
 
 def display_profile(character_key):
-    """Отображение профиля персонажа вверху диалога"""
     if character_key in CHARACTERS_PROFILES:
         profile = CHARACTERS_PROFILES[character_key]
-        
-        # Красивая карточка профиля с фиолетовым градиентом
         st.markdown(f"""
         <div style='
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             padding: 1.5rem;
             border-radius: 16px;
-            border: none;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
             margin-bottom: 1.5rem;
             color: white;
         '>
@@ -136,27 +105,24 @@ def display_profile(character_key):
                     display: flex; 
                     align-items: center; 
                     justify-content: center;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
                 '>
                     {profile['photo']}
                 </div>
                 <div style='flex: 1;'>
-                    <h3 style='margin: 0 0 0.5rem 0; color: white; font-size: 1.4rem; font-weight: 600;'>{profile['full_name']}</h3>
-                    <div style='display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; flex-wrap: wrap;'>
-                        <span style='background: rgba(255,255,255,0.2); padding: 0.35rem 0.9rem; border-radius: 20px; font-size: 0.85rem; font-weight: 500;'>
+                    <h3 style='margin: 0 0 0.5rem 0; color: white; font-size: 1.4rem;'>
+                        {profile['full_name']}
+                    </h3>
+                    <div style='display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem;'>
+                        <span style='background: rgba(255,255,255,0.2); padding: 0.35rem 0.9rem; border-radius: 20px;'>
                             {profile['role']}
                         </span>
-                        <span style='background: rgba(255,255,255,0.2); padding: 0.35rem 0.9rem; border-radius: 20px; font-size: 0.85rem; font-weight: 500;'>
+                        <span style='background: rgba(255,255,255,0.2); padding: 0.35rem 0.9rem; border-radius: 20px;'>
                             {profile['department']}
                         </span>
                     </div>
-                    <div style='display: flex; align-items: center; gap: 1.25rem; font-size: 0.9rem; opacity: 0.95;'>
-                        <span style='display: flex; align-items: center; gap: 0.4rem;'>
-                            {profile['status']}
-                        </span>
-                        <span style='display: flex; align-items: center; gap: 0.4rem;'>
-                            🕐 {profile['work_hours']}
-                        </span>
+                    <div style='display: flex; align-items: center; gap: 1.25rem; font-size: 0.9rem;'>
+                        <span>{profile['status']}</span>
+                        <span>🕐 {profile['work_hours']}</span>
                     </div>
                 </div>
             </div>
@@ -164,8 +130,6 @@ def display_profile(character_key):
         """, unsafe_allow_html=True)
 
 def display_chat(character_key):
-    """Отображение чата с выбранным персонажем/группой"""
-    # Показываем профиль для индивидуальных чатов вверху диалога
     if character_key in ["alice", "maxim"]:
         display_profile(character_key)
     
@@ -175,70 +139,44 @@ def display_chat(character_key):
     else:
         character = GROUP_CHATS[character_key]
         st.subheader(f"💬 {character['name']}")
+        st.caption(f"{character['description']} • {character['members']}")
     
-    # Показ истории сообщений
     for msg in st.session_state.chats[character_key]:
         if msg['role'] == 'user':
-            st.markdown(f"<div class='chat-message user-message'><strong>Вы:</strong> {msg['content']}</div>", 
-                       unsafe_allow_html=True)
+            st.markdown(f"<div class='chat-message user-message'><strong>Вы:</strong> {msg['content']}</div>", unsafe_allow_html=True)
         else:
-            st.markdown(f"<div class='chat-message bot-message'><strong>{character['name']}:</strong> {msg['content']}</div>", 
-                       unsafe_allow_html=True)
+            st.markdown(f"<div class='chat-message bot-message'><strong>{character['name']}:</strong> {msg['content']}</div>", unsafe_allow_html=True)
     
-    # Поле ввода
     with st.form(key=f'chat_form_{character_key}', clear_on_submit=True):
         user_input = st.text_input("Ваше сообщение:", key=f"input_{character_key}")
         submitted = st.form_submit_button("Отправить")
         
         if submitted and user_input:
-            # Добавляем сообщение пользователя
-            st.session_state.chats[character_key].append({
-                'role': 'user', 
-                'content': user_input
-            })
+            st.session_state.chats[character_key].append({'role': 'user', 'content': user_input})
             
-            # Получаем ответ
             if character_key in CHARACTERS_RESPONSES:
                 response = CHARACTERS_RESPONSES[character_key]['get_response'](user_input)
             else:
                 response = GROUP_CHATS[character_key]['get_response'](user_input)
             
-            # Добавляем ответ
-            st.session_state.chats[character_key].append({
-                'role': 'bot',
-                'content': response
-            })
-            
+            st.session_state.chats[character_key].append({'role': 'bot', 'content': response})
             st.rerun()
 
 def sql_sandbox():
-    """SQL песочница с вкладками"""
     tab1, tab2 = st.tabs(["🔧 SQL Редактор", "🗃️ Схема БД"])
     
     with tab1:
-        st.info("""
-        **Доступные таблицы:**
-        - `processing_operations` - наши операции
-        - `partner_a_payments` - данные партнера А
-        - `partner_b_payments` - данные партнера Б  
-        - `operation_additional_data` - доп данные
-        - `registry_statuses` - статусы реестров
-        - `commission_rates` - ставки комиссий
-        """)
-        
         sql_query = st.text_area("SQL запрос:", height=150, 
                                placeholder="SELECT * FROM processing_operations WHERE status = 'success'")
         
         if st.button("Выполнить запрос"):
             if sql_query:
                 result, feedback = validate_sql_query(sql_query)
-                
                 if result is not None:
                     st.success("✅ Запрос выполнен успешно")
                     st.dataframe(result)
                 else:
                     st.error("❌ Ошибка в запросе")
-                
                 if feedback:
                     st.info(f"💡 {feedback}")
             else:
@@ -248,18 +186,13 @@ def sql_sandbox():
         show_database_schema()
 
 def show_database_schema():
-    """Отображение схемы БД"""
     st.subheader("🗃️ Схема базы данных")
-    
     selected_table = st.selectbox("Выберите таблицу:", list(DATABASE_SCHEMA.keys()))
     
     if selected_table:
         table_info = DATABASE_SCHEMA[selected_table]
-        
         st.markdown(f"**Описание:** {table_info['description']}")
         st.markdown("---")
-        
-        # Отображение колонок
         st.markdown("**Структура таблицы:**")
         for col_name, col_info in table_info['columns'].items():
             col1, col2, col3, col4 = st.columns([2, 2, 1, 4])
@@ -278,27 +211,22 @@ def show_database_schema():
                 st.markdown(col_info['description'])
 
 def knowledge_base():
-    """База знаний"""
     st.subheader("📚 База знаний")
-    
     for article_key, article in KNOWLEDGE_BASE.items():
         with st.expander(article['title']):
             st.markdown(article['content'])
 
 def main():
-    # Заголовок в сайдбаре
     st.sidebar.title("🔍 DataWork Lab")
     st.sidebar.markdown("**Симулятор рабочих задач аналитика данных**")
     st.sidebar.markdown("---")
     
     initialize_chat()
     
-    # Навигация
     page = st.sidebar.radio("Выберите раздел:", 
                            ["💬 Чаты с командой", "🔧 SQL Песочница", "📚 База знаний"])
     
     if page == "💬 Чаты с командой":
-        # Выбор чата
         chat_type = st.sidebar.radio("Выберите чат:", 
                                    ["👩‍💼 Алиса", "👨‍💼 Максим", "🛠️ #dba-team", 
                                     "🤝 #partner_a_operations_chat", "🤝 #partner_b_operations_chat"])
@@ -312,7 +240,6 @@ def main():
         }
         
         selected_chat = chat_map[chat_type]
-        
         display_chat(selected_chat)
         
     elif page == "🔧 SQL Песочница":
