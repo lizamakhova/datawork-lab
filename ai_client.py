@@ -1,20 +1,78 @@
 import os
 import streamlit as st
+import requests
+import json
 
-class AIClient:
-    def __init__(self, api_token=None):
-        self.api_token = api_token or os.getenv('HUGGINGFACE_TOKEN')
-        self.model = "sberbank-ai/rugpt3large_based_on_gpt2"
+class YandexGPTClient:
+    def __init__(self):
+        self.api_key = st.secrets.get("YANDEX_GPT_API_KEY")
+        self.folder_id = st.secrets.get("YANDEX_FOLDER_ID")
+        self.api_url = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
         
-        if not self.api_token:
-            st.warning("⚠️ Hugging Face токен не настроен. Используются статические ответы.")
+        if not self.api_key:
+            st.error("❌ YandexGPT API ключ не настроен в Secrets")
+        if not self.folder_id:
+            st.error("❌ Yandex Folder ID не настроен в Secrets")
     
     def generate_response(self, prompt, user_message, max_length=300):
-        """Генерация ответа через AI (заглушка - будет заменена на реальную интеграцию)"""
-        # Временная заглушка - возвращаем статический ответ
-        # В реальной реализации здесь будет вызов Hugging Face API
+        if not self.api_key or not self.folder_id:
+            return self._get_static_response(prompt, user_message)
         
-        # Имитация AI ответа на основе промпта
+        try:
+            full_prompt = f"{prompt}\n\nПользователь: {user_message}\nАссистент:"
+            
+            headers = {
+                "Authorization": f"Api-Key {self.api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            payload = {
+                "modelUri": f"gpt://{self.folder_id}/yandexgpt-lite",
+                "completionOptions": {
+                    "stream": False,
+                    "temperature": 0.3,
+                    "maxTokens": str(max_length)
+                },
+                "messages": [
+                    {
+                        "role": "system",
+                        "text": prompt
+                    },
+                    {
+                        "role": "user", 
+                        "text": user_message
+                    }
+                ]
+            }
+            
+            response = requests.post(self.api_url, headers=headers, json=payload, timeout=30)
+            response.raise_for_status()
+            
+            result = response.json()
+            generated_text = result['result']['alternatives'][0]['message']['text']
+            
+            return self._filter_ready_solutions(generated_text)
+            
+        except Exception as e:
+            st.error(f"❌ Ошибка YandexGPT: {str(e)}")
+            return self._get_static_response(prompt, user_message)
+    
+    def _filter_ready_solutions(self, response):
+        forbidden_patterns = [
+            r"SELECT\s+.+\s+FROM", 
+            r"INSERT\s+INTO",
+            r"UPDATE\s+\w+\s+SET",
+            r"Вот\s+запрос:",
+            r"Скопируй\s+этот\s+код"
+        ]
+        
+        for pattern in forbidden_patterns:
+            if re.search(pattern, response, re.IGNORECASE):
+                return "Попробуй сам написать запрос. Если что-то не получается - покажи свой вариант, помогу разобраться."
+        
+        return response
+    
+    def _get_static_response(self, prompt, user_message):
         if "Алиса" in prompt:
             return self._get_alice_response(user_message)
         elif "Максим" in prompt:
@@ -25,65 +83,16 @@ class AIClient:
             return self._get_partner_response(user_message)
     
     def _get_alice_response(self, user_message):
-        """Имитация AI ответов Алисы"""
         message_lower = user_message.lower()
         
         if any(word in message_lower for word in ["sql", "запрос", "таблиц", "данн"]):
-            return "Для работы с данными тебе понадобятся несколько таблиц. Основная - processing_operations содержит наши операции. Для связи с партнерами используй partner_a_payments и partner_b_payments через partner_operation_id из operation_additional_data. Не забудь проверить реестры в registry_statuses - там есть поле is_excluded которое должно быть 0 для активных реестров."
+            return "Для работы с данными тебе понадобятся несколько таблиц. Основная - processing_operations содержит наши операции. Для связи с партнерами используй partner_a_payments и partner_b_payments через partner_operation_id из operation_additional_data."
         
         elif any(word in message_lower for word in ["расхожден", "статус"]):
-            return "При расхождениях статусов важно помнить: данные партнера всегда приоритетны. Например, операция PA023 - у нас статус success, а у партнера DECLINED. Нужно исправить наш статус на failed. Для этого используй запрос к DBA: UPDATE processing_operations SET status='failed' WHERE processing_id='PA023'"
-        
-        elif any(word in message_lower for word in ["комисс", "commission"]):
-            return "Комиссии проверяются через сравнение commission_amount в processing_operations с расчетом по таблице commission_rates. Формула: amount * commission_percent + fixed_commission. Например, для PA037 расчет дает 4.30, а в реестре 3.20 - это расхождение нужно запросить у партнера."
-        
-        elif any(word in message_lower for word in ["реестр", "дубл"]):
-            return "У PARTNER_B два активных реестра на одну дату - REG_B_001 и REG_B_002. Нужно уточнить у партнера какой корректен. В чате #partner_b_operations_chat запроси подтверждение и исключение некорректного реестра."
+            return "При расхождениях статусов важно помнить: данные партнера всегда приоритетны. Например, операция PA023 - у нас статус success, а у партнера DECLINED. Нужно исправить наш статус на failed."
         
         else:
-            return "Привет! Расскажи подробнее что тебя интересует - помогу разобраться с структурой данных, бизнес-логикой или процессами работы с партнерами."
-
-    def _get_maxim_response(self, user_message):
-        """Имитация AI ответов Максима"""
-        message_lower = user_message.lower()
-        
-        if any(word in message_lower for word in ["операц", "успешн", "прибыл"]):
-            return "Нужны успешные операции за вчера с общей суммой и комиссиями. ASAP к 11:00 для встречи с инвесторами."
-        
-        elif any(word in message_lower for word in ["срок", "когда"]):
-            return "К 11:00 сегодня. Это критично для принятия решений по квартальной отчетности."
-        
-        elif any(word in message_lower for word in ["детал", "как"]):
-            return "Технические детали уточни у Алисы - она поможет с запросами и данными."
-        
-        else:
-            return "Зайди к Алисе за деталями по данным и запросам."
-
-    def _get_dba_response(self, user_message):
-        """Имитация AI ответов DBA команды"""
-        message_lower = user_message.lower()
-        
-        if any(word in message_lower for word in ["update", "insert"]) and "where" in message_lower:
-            return "Привет! Запрос выполнен. Проверь результаты. Не забудь про бэкапы данных при изменении системных таблиц."
-        
-        elif any(word in message_lower for word in ["исправ", "прав"]):
-            return "Привет! Напиши запрос в корректном формате: UPDATE таблица SET поле=значение WHERE условие. Мы выполняем только скрипты с явными условиями."
-        
-        else:
-            return "Привет! Мы выполняем запросы в формате: UPDATE|INSERT таблица УСЛОВИЯ. Убедись что в запросе есть WHERE условие для UPDATE."
-
-    def _get_partner_response(self, user_message):
-        """Имитация AI ответов партнеров"""
-        message_lower = user_message.lower()
-        
-        if any(word in message_lower for word in ["комисс", "расхожден"]):
-            return "Добрый день! Получили ваш запрос по расхождениям в комиссиях. Проверим расчеты и предоставим ответ в течение 2 рабочих дней."
-        
-        elif any(word in message_lower for word in ["реестр", "дубл"]):
-            return "Добрый день! По вашему запросу о дублирующих реестрах: проверим и уточним у операционного отдела. Вернемся с ответом завтра."
-        
-        else:
-            return "Добрый день! Чем можем помочь? Опишите подробнее ваш вопрос для более точного ответа."
+            return "Привет! Расскажи подробнее что тебя интересует - помогу разобраться с структурой данных или процессами работы."
 
 # Глобальный клиент
-ai_client = AIClient()
+yandex_gpt_client = YandexGPTClient()
