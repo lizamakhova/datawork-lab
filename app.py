@@ -5,7 +5,9 @@ import time
 import html
 from datetime import datetime
 
-# Lazy-импорты — критично для cold start!
+# ==========================================
+# Lazy imports — критично для cold start
+# ==========================================
 def get_demo_database():
     from database import get_demo_database as _get
     return _get()
@@ -15,10 +17,6 @@ def get_openai_client():
         from ai_client import OpenAIClient
         st.session_state.openai_client = OpenAIClient()
     return st.session_state.openai_client
-
-def get_characters_responses():
-    import characters  # ← локальный импорт, безопасный
-    return characters.CHARACTERS_RESPONSES, characters.GROUP_CHATS
 
 def get_database_schema():
     from database_schema import DATABASE_SCHEMA
@@ -32,14 +30,84 @@ def validate_sql_query(sql_query):
     from sql_validator import validate_sql_query as _validate
     return _validate(sql_query)
 
-# ========================
+# ==========================================
+# Стили — мессенджер-интерфейс
+# ==========================================
+st.markdown("""
+<style>
+    .chat-message {
+        padding: 1rem; 
+        border-radius: 12px;
+        margin-bottom: 1rem;
+        border: 1px solid var(--border-color, #e0e0e0);
+        background: var(--message-bg, white);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        color: var(--text-color, #333333) !important;
+        line-height: 1.5;
+    }
+    .user-message {
+        margin-left: 2.5rem;
+        margin-right: 0.5rem;
+        border-left: 4px solid var(--user-accent, #4A90E2);
+        background: var(--user-bg, #F0F8FF);
+    }
+    .bot-message {
+        margin-right: 2.5rem;
+        margin-left: 0.5rem;
+        border-left: 4px solid var(--bot-accent, #2AB27B);
+        background: var(--bot-bg, #F6FFFE);
+    }
+    .chat-message strong {
+        color: var(--strong-text, #1D1C1D) !important;
+        font-weight: 600;
+        font-size: 0.95rem;
+    }
+    
+    :root {
+        --border-color: #e0e0e0;
+        --message-bg: white;
+        --text-color: #333333;
+        --user-accent: #4A90E2;
+        --user-bg: #F0F8FF;
+        --bot-accent: #2AB27B; 
+        --bot-bg: #F6FFFE;
+        --strong-text: #1D1C1D;
+    }
+    
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --border-color: #444444;
+            --message-bg: #2D3748;
+            --text-color: #E2E8F0;
+            --user-accent: #63B3ED;
+            --user-bg: #2A4365;
+            --bot-accent: #68D391;
+            --bot-bg: #22543D;
+            --strong-text: #F7FAFC;
+        }
+    }
+    
+    .stApp[data-theme="dark"] {
+        --border-color: #444444;
+        --message-bg: #2D3748;
+        --text-color: #E2E8F0;
+        --user-accent: #63B3ED;
+        --user-bg: #2A4365;
+        --bot-accent: #68D391;
+        --bot-bg: #22543D;
+        --strong-text: #F7FAFC;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ==========================================
 # Инициализация сессии
-# ========================
+# ==========================================
 def initialize_session():
     if 'initialized' not in st.session_state:
         st.session_state.initialized = True
         
-        # 👤 Профиль пользователя
+        # 👤 Профиль
         st.session_state.user_profile = {
             "name": "Алексей", 
             "nickname": "alex_data",
@@ -56,17 +124,18 @@ def initialize_session():
         st.session_state.sql_history = []
         st.session_state.sql_last_result = None
         st.session_state.sql_last_feedback = ""
+        st.session_state.sql_last_query = ""
         
-        # 📚 База знаний — открытые статьи
+        # 📚 База знаний
         st.session_state.kb_expanded = {}
         
         # 🎯 Сценарии
         st.session_state.active_scenario = None
         st.session_state.scenario_start_time = None
 
-# ========================
-# UI Компоненты
-# ========================
+# ==========================================
+# UI: sidebar
+# ==========================================
 def render_sidebar():
     with st.sidebar:
         st.image("https://placehold.co/40x40/4A90E2/FFFFFF?text=DW", width=40)
@@ -93,7 +162,6 @@ def render_sidebar():
         }
         
         for chat_id, label in chat_labels.items():
-            # Подсчёт непрочитанных
             unread = sum(1 for m in st.session_state.chats[chat_id] 
                          if m['role'] == 'bot' and not m.get('read', False))
             badge = f" <span style='background:#e33;color:white;padding:1px 6px;border-radius:10px;font-size:10px;'>{unread}</span>" if unread else ""
@@ -109,34 +177,100 @@ def render_sidebar():
         if st.button("📚 База знаний", key="tab_kb", use_container_width=True):
             st.session_state.active_tab = "kb"
         
-        # 🎯 Сценарии (временно)
+        # 🎯 Сценарии
         st.markdown("### 🎯 Обучение")
         if st.button("▶️ Запустить сценарий", key="start_scenario", use_container_width=True, type="primary"):
             st.session_state.active_scenario = "revenue_mismatch"
             st.session_state.scenario_start_time = time.time()
-            st.success("Сценарий запущен! Первое сообщение придет через 5 секунд.")
+            st.success("Сценарий запущен!")
         
         # 🗑️ Сброс
         if st.button("🔄 Обнулить прогресс", key="reset", use_container_width=True):
             st.session_state.clear()
             st.rerun()
 
-def render_chat_header(chat_id):
-    display_names = {
-        "alice": "Алиса Петрова",
-        "maxim": "Максим Волков",
-        "kirill": "Кирилл Смирнов",
-        "dba_team": "#dba-team",
-        "partner_a": "#partner_a_operations_chat",
-        "partner_b": "#partner_b_operations_chat",
+# ==========================================
+# UI: профили персонажей
+# ==========================================
+def display_profile(chat_id):
+    profiles = {
+        "alice": {
+            "full_name": "Алиса Петрова",
+            "photo": "👩‍💼",
+            "status": "🟢 Онлайн",
+            "role": "Руководитель аналитики",
+            "department": "Отдел аналитики",
+            "work_hours": "9:00-18:00 МСК"
+        },
+        "maxim": {
+            "full_name": "Максим Волков",
+            "photo": "👨‍💼",
+            "status": "🟡 Не беспокоить",
+            "role": "Финансовый директор",
+            "department": "Финансовый отдел",
+            "work_hours": "Не указано"
+        },
+        "kirill": {
+            "full_name": "Кирилл Смирнов",
+            "photo": "👨",
+            "status": "🟢 Онлайн",
+            "role": "Продакт-менеджер",
+            "department": "Продуктовый отдел",
+            "work_hours": "10:00-19:00 МСК"
+        }
     }
-    st.subheader(f"💬 {display_names[chat_id]}")
+    
+    if chat_id in profiles:
+        p = profiles[chat_id]
+        st.markdown(f"""
+        <div style='
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 1.2rem;
+            border-radius: 16px;
+            margin-bottom: 1.2rem;
+            color: white;
+            font-size: 0.95rem;
+        '>
+            <div style='display: flex; align-items: center; gap: 1rem;'>
+                <div style='
+                    font-size: 48px; 
+                    background: white; 
+                    border-radius: 50%; 
+                    width: 60px; 
+                    height: 60px; 
+                    display: flex; 
+                    align-items: center; 
+                    justify-content: center;
+                '>
+                    {p['photo']}
+                </div>
+                <div>
+                    <h4 style='margin: 0 0 0.3rem 0; color: white;'>{p['full_name']}</h4>
+                    <div style='display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; font-size: 0.85rem;'>
+                        <span style='background: rgba(255,255,255,0.2); padding: 0.25rem 0.8rem; border-radius: 20px;'>
+                            {p['role']}
+                        </span>
+                        <span style='background: rgba(255,255,255,0.2); padding: 0.25rem 0.8rem; border-radius: 20px;'>
+                            {p['department']}
+                        </span>
+                    </div>
+                    <div style='display: flex; align-items: center; gap: 1rem; font-size: 0.85rem;'>
+                        <span>{p['status']}</span>
+                        <span>🕐 {p['work_hours']}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
+# ==========================================
+# UI: отображение чата
+# ==========================================
 def render_message(msg, is_last=False, is_typing=False):
     from_user = msg['role'] == 'user'
     sender_name = "Вы" if from_user else msg.get('sender_name', 'Система')
     
-    # Иконки отправителей (для групп)
+    # Иконки
     sender_icon = ""
     if not from_user:
         icons = {
@@ -157,7 +291,7 @@ def render_message(msg, is_last=False, is_typing=False):
         else:
             status = " <span style='color:#aaa;'>⏱️</span>"
     
-    # Классы
+    # Класс
     msg_class = "user-message" if from_user else "bot-message"
     
     content = html.escape(msg['content'], quote=False)
@@ -172,30 +306,59 @@ def render_message(msg, is_last=False, is_typing=False):
     """, unsafe_allow_html=True)
 
 def display_chat(chat_id):
-    render_chat_header(chat_id)
+    # Заголовок
+    display_names = {
+        "alice": "Алиса Петрова",
+        "maxim": "Максим Волков",
+        "kirill": "Кирилл Смирнов",
+        "dba_team": "#dba-team",
+        "partner_a": "#partner_a_operations_chat",
+        "partner_b": "#partner_b_operations_chat",
+    }
+    st.subheader(f"💬 {display_names[chat_id]}")
     
-    # Получаем персонажа
-    CHARACTERS_RESPONSES, GROUP_CHATS = get_characters_responses()
-    char_config = CHARACTERS_RESPONSES.get(chat_id) or GROUP_CHATS.get(chat_id)
+    # 👤 Профиль / описание
+    if chat_id in ["alice", "maxim", "kirill"]:
+        display_profile(chat_id)
+    else:
+        # Групповые чаты — описание
+        GROUP_CHATS = {
+            "dba_team": {
+                "name": "#dba-team",
+                "description": "Команда баз данных — выполняем SQL запросы",
+                "members": "3 участника"
+            },
+            "partner_a": {
+                "name": "#partner_a_operations_chat",
+                "description": "Операции с Партнером А — вопросы по реестрам и комиссиям",
+                "members": "Поддержка Партнер А + наша команда"
+            },
+            "partner_b": {
+                "name": "#partner_b_operations_chat",
+                "description": "Операции с Партнером Б — согласование реестров и статусов",
+                "members": "Поддержка Партнер Б + наша команда"
+            }
+        }
+        gc = GROUP_CHATS[chat_id]
+        st.caption(f"{gc['description']} • {gc['members']}")
     
-    # Отображаем историю
+    # История
     chat_history = st.session_state.chats[chat_id]
     for i, msg in enumerate(chat_history):
         is_last = (i == len(chat_history) - 1)
         render_message(msg, is_last=is_last)
     
-    # Индикатор "печатает", если последнее сообщение — наше, и бот ещё не ответил
+    # Индикатор "печатает"
     if chat_history and chat_history[-1]['role'] == 'user' and not chat_history[-1].get('read', False):
-        fake_bot_msg = {"role": "bot", "content": "", "sender_name": char_config['name']}
-        render_message(fake_bot_msg, is_typing=True)
+        fake_bot = {"role": "bot", "content": "", "sender_name": display_names[chat_id]}
+        render_message(fake_bot, is_typing=True)
     
-    # Форма ввода
+    # ✅ Форма — только один раз, после истории
     with st.form(key=f'chat_form_{chat_id}', clear_on_submit=True):
-        user_input = st.text_input("Сообщение:", key=f"input_{chat_id}")
-        submitted = st.form_submit_button("Отправить")
+        user_input = st.text_input("Сообщение:", key=f"input_{chat_id}", placeholder="Напишите сообщение...")
+        submitted = st.form_submit_button("Отправить", type="primary")
         
         if submitted and user_input.strip():
-            # Добавляем сообщение пользователя
             new_msg = {
                 "role": "user",
                 "content": user_input.strip(),
@@ -204,122 +367,88 @@ def display_chat(chat_id):
                 "id": f"msg_{int(time.time()*1000)}"
             }
             st.session_state.chats[chat_id].append(new_msg)
-            
-            # Планируем обработку (без st.rerun — пусть UI обновится сам)
             st.session_state[f'pending_response_{chat_id}'] = user_input.strip()
             st.rerun()
 
-def process_ai_response(chat_id):
-    """Обрабатывает ответ после отображения сообщения пользователя"""
-    pending_key = f'pending_response_{chat_id}'
-    if pending_key not in st.session_state or not st.session_state[pending_key]:
-        return
+# ==========================================
+# SQL Песочница
+# ==========================================
+def show_database_schema():
+    st.markdown("#### 🗃️ Схема базы данных")
+    DATABASE_SCHEMA = get_database_schema()
+    selected_table = st.selectbox("Выберите таблицу:", list(DATABASE_SCHEMA.keys()), key="schema_table")
     
-    user_message = st.session_state[pending_key]
-    
-    # Получаем конфиг чата
-    CHARACTERS_RESPONSES, GROUP_CHATS = get_characters_responses()
-    char_config = CHARACTERS_RESPONSES.get(chat_id) or GROUP_CHATS.get(chat_id)
-    
-    # Получаем клиента (lazy)
-    client = get_openai_client()
-    
-    # Задержка (реалистичное "ожидание прочтения")
-    delays = {
-        "alice": 8, "maxim": 25, "kirill": 12,
-        "dba_team": 15, "partner_a": 18, "partner_b": 22
-    }
-    delay = delays.get(chat_id, 10)
-    
-    # Имитация: сначала "прочитано", потом "печатает", потом ответ
-    time.sleep(delay - 2)
-    
-    # Помечаем как прочитано
-    if st.session_state.chats[chat_id]:
-        st.session_state.chats[chat_id][-1]["read"] = True
-    st.rerun()  # → покажет ✔️ + "печатает…"
-    
-    time.sleep(2)  # имитация набора текста
-    
-    # Генерация ответа
-    try:
-        if chat_id in CHARACTERS_RESPONSES:
-            response = CHARACTERS_RESPONSES[chat_id]['get_response'](user_message)
-        else:
-            response = GROUP_CHATS[chat_id]['get_response'](user_message)
-    except Exception as e:
-        response = f"❌ Ошибка генерации: {str(e)}"
-    
-    # Имена в групповых чатах
-    sender_names = {
-        "dba_team": "Михаил Шилин",
-        "partner_a": "Анна Новикова",
-        "partner_b": "Дмитрий Семенов",
-    }
-    
-    # Добавляем ответ
-    bot_msg = {
-        "role": "bot",
-        "content": response,
-        "timestamp": time.time(),
-        "read": True,
-        "sender_name": sender_names.get(chat_id, char_config['name']),
-        "id": f"msg_{int(time.time()*1000)}"
-    }
-    st.session_state.chats[chat_id].append(bot_msg)
-    
-    # Очищаем pending
-    st.session_state[pending_key] = None
-    st.rerun()
+    if selected_table:
+        table_info = DATABASE_SCHEMA[selected_table]
+        st.markdown(f"**Описание:** {table_info['description']}")
+        st.markdown("---")
+        st.markdown("**Структура таблицы:**")
+        cols = st.columns([2, 2, 1, 3])
+        cols[0].markdown("**Колонка**")
+        cols[1].markdown("**Тип**")
+        cols[2].markdown("**Ключ**")
+        cols[3].markdown("**Описание**")
+        for col_name, col_info in table_info['columns'].items():
+            c0, c1, c2, c3 = st.columns([2, 2, 1, 3])
+            c0.code(col_name)
+            c1.code(col_info['type'])
+            if col_info.get('pk'):
+                c2.markdown("🔑")
+            elif col_info.get('fk'):
+                c2.markdown("🔗")
+            else:
+                c2.markdown("")
+            c3.write(col_info['description'])
 
 def sql_sandbox():
     st.subheader("🔧 SQL Песочница")
+    tab1, tab2 = st.tabs(["📝 SQL Запрос", "🗃️ Схема БД"])
     
-    # Ввод
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        sql_query = st.text_area("SQL запрос:", 
-                                value=st.session_state.get('sql_last_query', ''),
-                                height=120,
-                                key="sql_input")
-    with col2:
-        if st.button("▶️ Выполнить", type="primary", key="run_sql"):
-            if sql_query.strip():
-                st.session_state.sql_last_query = sql_query
-                result, feedback = validate_sql_query(sql_query)
-                st.session_state.sql_last_result = result
-                st.session_state.sql_last_feedback = feedback
-                
-                # Сохраняем в историю
-                st.session_state.sql_history.append({
-                    "query": sql_query,
-                    "result": result.copy() if result is not None else None,
-                    "feedback": feedback,
-                    "timestamp": time.time()
-                })
-                st.session_state.sql_history = st.session_state.sql_history[-10:]
+    with tab1:
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            sql_query = st.text_area("SQL запрос:", 
+                                    value=st.session_state.sql_last_query,
+                                    height=120,
+                                    key="sql_input")
+        with col2:
+            if st.button("▶️ Выполнить", type="primary", key="run_sql", use_container_width=True):
+                if sql_query.strip():
+                    st.session_state.sql_last_query = sql_query
+                    result, feedback = validate_sql_query(sql_query)
+                    st.session_state.sql_last_result = result
+                    st.session_state.sql_last_feedback = feedback
+                    st.session_state.sql_history.append({
+                        "query": sql_query,
+                        "result": result.copy() if result is not None else None,
+                        "feedback": feedback,
+                        "timestamp": time.time()
+                    })
+                    st.session_state.sql_history = st.session_state.sql_history[-10:]
+        
+        # Результат
+        if st.session_state.sql_last_result is not None:
+            st.success("✅ Запрос выполнен")
+            st.dataframe(st.session_state.sql_last_result, use_container_width=True)
+        if st.session_state.sql_last_feedback:
+            st.info(f"💡 {st.session_state.sql_last_feedback}")
+        
+        # История
+        with st.expander("🕒 История запросов (последние 10)", expanded=False):
+            for item in reversed(st.session_state.sql_history):
+                st.code(item["query"], language="sql")
+                if item["result"] is not None:
+                    st.dataframe(item["result"], use_container_width=True)
+                if item["feedback"]:
+                    st.caption(item["feedback"])
+                st.markdown("---")
     
-    # Результат
-    if st.session_state.sql_last_result is not None:
-        st.success("✅ Запрос выполнен")
-        st.dataframe(st.session_state.sql_last_result)
-    if st.session_state.sql_last_feedback:
-        st.info(f"💡 {st.session_state.sql_last_feedback}")
-    
-    # История
-    with st.expander("🕒 История запросов (последние 10)", expanded=False):
-        if st.session_state.sql_history:
-            for i, item in enumerate(reversed(st.session_state.sql_history)):
-                with st.container():
-                    st.code(item["query"], language="sql")
-                    if item["result"] is not None:
-                        st.dataframe(item["result"], use_container_width=True)
-                    if item["feedback"]:
-                        st.caption(item["feedback"])
-                    st.markdown("---")
-        else:
-            st.caption("История пуста")
+    with tab2:
+        show_database_schema()
 
+# ==========================================
+# База знаний
+# ==========================================
 def knowledge_base():
     st.subheader("📚 База знаний")
     KNOWLEDGE_BASE = get_knowledge_base()
@@ -330,28 +459,28 @@ def knowledge_base():
             st.session_state.kb_expanded[key] = True
             st.markdown(article['content'])
 
+# ==========================================
+# Сценарий (заготовка)
+# ==========================================
 def scenario_engine():
-    """Заготовка под сценарии (реализуем далее)"""
     if st.session_state.active_scenario and st.session_state.scenario_start_time:
         elapsed = time.time() - st.session_state.scenario_start_time
-        
-        # Пример: через 5 сек — первое сообщение от Максима
-        if elapsed > 5 and not st.session_state.get('scenario_step_1'):
-            # Имитация входящего сообщения
+        if elapsed > 2 and not st.session_state.get('scenario_step_1'):
+            # Первое сообщение от Максима
             st.session_state.chats["maxim"].append({
                 "role": "bot",
                 "content": "Нужна выручка за 15.01 к 11:00. ASAP!",
                 "timestamp": time.time(),
                 "read": False,
                 "sender_name": "Максим Волков",
-                "id": f"msg_auto_{int(time.time()*1000)}"
+                "id": f"auto_{int(time.time() * 1000)}"
             })
             st.session_state.scenario_step_1 = True
             st.rerun()
 
-# ========================
+# ==========================================
 # Main
-# ========================
+# ==========================================
 def main():
     st.set_page_config(
         page_title="DataWork Lab",
@@ -359,23 +488,54 @@ def main():
         layout="wide"
     )
     
-    # CSS (без изменений — оставляем ваш)
-    st.markdown("""
-    <style>
-        .chat-message { ... } /* ваш CSS */
-    </style>
-    """, unsafe_allow_html=True)
-    
     initialize_session()
     render_sidebar()
-    scenario_engine()  # фоновая логика сценариев
+    scenario_engine()
     
     # Основной контент
     if st.session_state.active_tab == "chats":
         display_chat(st.session_state.active_chat)
-        process_ai_response(st.session_state.active_chat)
+        # Обработка AI — только если есть pending
+        if f'pending_response_{st.session_state.active_chat}' in st.session_state:
+            from characters import get_ai_response
+            CHARACTERS_RESPONSES, GROUP_CHATS = {}, {}  # не нужны здесь
+            chat_id = st.session_state.active_chat
+            pending_key = f'pending_response_{chat_id}'
+            if st.session_state.get(pending_key):
+                user_msg = st.session_state[pending_key]
+                
+                # Задержка (ускоренная для демо)
+                import random
+                delays = {"alice": 2, "maxim": 5, "kirill": 2, "dba_team": 2, "partner_a": 3, "partner_b": 3}
+                time.sleep(delays.get(chat_id, 2))
+                
+                # Помечаем как прочитано
+                if st.session_state.chats[chat_id]:
+                    st.session_state.chats[chat_id][-1]["read"] = True
+                st.rerun()
+                
+                # Генерация ответа
+                response = get_ai_response(chat_id, user_msg)
+                sender_names = {
+                    "dba_team": "Михаил Шилин",
+                    "partner_a": "Анна Новикова",
+                    "partner_b": "Дмитрий Семенов",
+                }
+                st.session_state.chats[chat_id].append({
+                    "role": "bot",
+                    "content": response,
+                    "timestamp": time.time(),
+                    "read": True,
+                    "sender_name": sender_names.get(chat_id, 
+                        {"alice": "Алиса Петрова", "maxim": "Максим Волков", "kirill": "Кирилл Смирнов"}[chat_id]),
+                    "id": f"msg_{int(time.time()*1000)}"
+                })
+                st.session_state[pending_key] = None
+                st.rerun()
+    
     elif st.session_state.active_tab == "sql":
         sql_sandbox()
+    
     else:
         knowledge_base()
 
