@@ -17,8 +17,8 @@ def get_openai_client():
     return st.session_state.openai_client
 
 def get_characters_responses():
-    from characters import CHARACTERS_RESPONSES, GROUP_CHATS
-    return CHARACTERS_RESPONSES, GROUP_CHATS
+    import characters  # ← локальный импорт, безопасный
+    return characters.CHARACTERS_RESPONSES, characters.GROUP_CHATS
 
 def get_database_schema():
     from database_schema import DATABASE_SCHEMA
