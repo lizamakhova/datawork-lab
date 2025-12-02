@@ -1,6 +1,5 @@
-import random
-
-from ai_client import openai_client  # ✅ Новый OpenAI клиент
+# characters.py
+from ai_client import get_openai_client  # ✅ lazy
 
 CHARACTERS_PROFILES = {
     "alice": {
@@ -18,17 +17,21 @@ CHARACTERS_PROFILES = {
         "role": "Финансовый директор", 
         "department": "Финансовый отдел",
         "work_hours": "Не указано"
+    },
+    "kirill": {
+        "full_name": "Кирилл Смирнов", 
+        "photo": "👨",
+        "status": "🟢 Онлайн",
+        "role": "Product manager",
+        "department": "", 
+        "work_hours": "9:00-18:00 МСК"
     }
 }
 
+# В get_ai_response:
 def get_ai_response(character_key, user_message):
-    """Получаем ответ от OpenAI с детальными промптами"""
-    try:
-        response = openai_client.generate_response(character_key, user_message)
-        return response
-    except Exception as e:
-        # Fallback на умные ответы без эмодзи
-        return get_smart_fallback(character_key, user_message)
+    client = get_openai_client()  # ✅
+    return client.generate_response(character_key, user_message)
 
 def get_smart_fallback(character_key, user_message):
     """Умные fallback ответы БЕЗ эмодзи"""
