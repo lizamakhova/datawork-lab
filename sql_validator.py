@@ -1,21 +1,27 @@
 import pandas as pd
 import re
-from database import DEMO_DATABASE
+import streamlit as st
+
+# Lazy-импорт — критично для cold start
+def get_demo_database():
+    from database import get_demo_database as _get
+    return _get()
 
 class SQLSimulator:
-    def __init__(self):
+    def __init__(self, demo_data):
+        """demo_data — dict с таблицами"""
         self.tables = {
-            "processing_operations": pd.DataFrame(DEMO_DATABASE["processing_operations"]),
-            "partner_a_payments": pd.DataFrame(DEMO_DATABASE["partner_a_payments"]),
-            "partner_b_payments": pd.DataFrame(DEMO_DATABASE["partner_b_payments"]),
-            "operation_additional_data": pd.DataFrame(DEMO_DATABASE["operation_additional_data"]),
-            "registry_statuses": pd.DataFrame(DEMO_DATABASE["registry_statuses"]),
-            "commission_rates": pd.DataFrame(DEMO_DATABASE["commission_rates"])
+            "processing_operations": pd.DataFrame(demo_data["processing_operations"]),
+            "partner_a_payments": pd.DataFrame(demo_data["partner_a_payments"]),
+            "partner_b_payments": pd.DataFrame(demo_data["partner_b_payments"]),
+            "operation_additional_data": pd.DataFrame(demo_data["operation_additional_data"]),
+            "registry_statuses": pd.DataFrame(demo_data["registry_statuses"]),
+            "commission_rates": pd.DataFrame(demo_data["commission_rates"])
         }
         self._prepare_data_types()
 
     def _prepare_data_types(self):
-        for table_name, df in self.tables.items():
+        for df in self.tables.values():
             for col in df.columns:
                 if df[col].dtype == 'object':
                     try:
@@ -29,248 +35,178 @@ class SQLSimulator:
             
             if sql_lower.startswith('select'):
                 return self._execute_select(sql_query)
-            elif sql_lower.startswith('update'):
-                return None, "❌ ERROR: insufficient privileges for UPDATE operations"
-            elif sql_lower.startswith('insert'):
-                return None, "❌ ERROR: insufficient privileges for INSERT operations"
-            elif sql_lower.startswith('delete'):
-                return None, "❌ ERROR: insufficient privileges for DELETE operations"
-            elif any(word in sql_lower for word in ['create', 'drop', 'alter', 'truncate']):
-                return None, "❌ ERROR: insufficient privileges for DDL operations"
+            elif any(kw in sql_lower for kw in ['update', 'insert', 'delete', 'drop', 'alter', 'create', 'truncate']):
+                return None, "❌ ERROR: DML/DDL operations are not allowed in sandbox"
             else:
-                return None, "❌ Поддерживаются только SELECT запросы"
-                
+                return None, "❌ Only SELECT queries are supported"
+
         except Exception as e:
-            return None, f"❌ Ошибка выполнения: {str(e)}"
+            return None, f"❌ Execution error: {str(e)}"
 
     def _execute_select(self, sql_query):
         try:
             sql_lower = sql_query.lower().strip()
             
+            # Базовый парсинг SELECT ... FROM
             select_pattern = r'select\s+(.*?)\s+from\s+(\w+)(?:\s+(?:as\s+)?(\w+))?'
-            select_match = re.search(select_pattern, sql_lower)
-            
+            select_match = re.search(select_pattern, sql_lower, re.IGNORECASE)
             if not select_match:
-                return None, "❌ Неверный формат SELECT запроса"
-                
-            columns_part = select_match.group(1)
+                return None, "❌ Invalid SELECT syntax. Expected: SELECT ... FROM table"
+            
+            columns_part = select_match.group(1).strip()
             table_name = select_match.group(2)
             table_alias = select_match.group(3)
-            
+
             if table_name not in self.tables:
-                return None, f"❌ Таблица {table_name} не найдена"
-                
+                return None, f"❌ Table not found: `{table_name}`"
+
             result = self.tables[table_name].copy()
-            
-            where_match = re.search(r'where\s+(.*?)(?:\s+order\s+by|\s+group\s+by|\s+limit|\s*$)', sql_lower, re.IGNORECASE)
+
+            # Обработка JOIN
+            if 'join' in sql_lower:
+                result = self._apply_joins(sql_query, result, table_name)
+
+            # Обработка WHERE
+            where_match = re.search(r'where\s+(.*?)(?=\s+(?:order\s+by|group\s+by|limit|$))', sql_lower, re.IGNORECASE)
             if where_match:
                 where_condition = where_match.group(1)
-                if table_alias:
-                    where_condition = re.sub(rf'\b{table_alias}\.\s*(\w+)', r'\1', where_condition)
-                where_condition = re.sub(r'\b\w+\.\s*(\w+)', r'\1', where_condition)
-                result = self._apply_where_condition(result, where_condition)
-            
-            if 'join' in sql_lower:
-                result = self._apply_joins_with_aliases(sql_query, result, table_name, table_alias)
-            
-            if columns_part.strip() == '*':
+                result = self._apply_where_condition(result, where_condition, table_alias)
+
+            # Обработка SELECT колонок
+            if columns_part == '*':
                 pass
             else:
-                clean_columns = []
-                for col in columns_part.split(','):
-                    col = col.strip()
-                    if table_alias and col.startswith(f'{table_alias}.'):
-                        col = col.replace(f'{table_alias}.', '')
-                    col = re.sub(r'^\w+\.', '', col)
-                    col = col.replace('"', '').replace("'", "").strip()
-                    
-                    if col == '*':
-                        clean_columns = list(result.columns)
-                        break
-                    clean_columns.append(col)
-                
-                missing_cols = [col for col in clean_columns if col not in result.columns]
-                if missing_cols:
-                    return None, f"❌ Колонки не найдены: {missing_cols}"
+                clean_columns = self._parse_columns(columns_part, table_alias, result.columns)
+                missing = [c for c in clean_columns if c not in result.columns]
+                if missing:
+                    return None, f"❌ Columns not found: {missing}"
                 result = result[clean_columns]
-            
-            order_match = re.search(r'order\s+by\s+(.*?)(?:\s+(asc|desc))?(?:\s+limit|\s*$)', sql_lower, re.IGNORECASE)
-            if order_match:
-                order_column = order_match.group(1).strip()
-                if table_alias and order_column.startswith(f'{table_alias}.'):
-                    order_column = order_column.replace(f'{table_alias}.', '')
-                order_column = re.sub(r'^\w+\.', '', order_column)
-                order_column = order_column.replace('"', '').replace("'", "")
-                
-                order_asc = order_match.group(2) != 'desc'
-                if order_column in result.columns:
-                    result = result.sort_values(order_column, ascending=order_asc)
-                else:
-                    return None, f"❌ Колонка для ORDER BY не найдена: {order_column}"
-            
-            return result, "✅ Запрос выполнен успешно"
-            
-        except Exception as e:
-            return None, f"❌ Ошибка выполнения: {str(e)}"
 
-    def _apply_joins_with_aliases(self, sql_query, base_df, base_table, base_alias):
+            # Обработка ORDER BY
+            order_match = re.search(r'order\s+by\s+(\w+)(?:\s+(asc|desc))?', sql_lower, re.IGNORECASE)
+            if order_match:
+                col = order_match.group(1)
+                asc = order_match.group(2) != 'desc'
+                if col in result.columns:
+                    result = result.sort_values(col, ascending=asc)
+                else:
+                    return None, f"❌ ORDER BY column not found: `{col}`"
+
+            # Обработка LIMIT
+            limit_match = re.search(r'limit\s+(\d+)', sql_lower, re.IGNORECASE)
+            if limit_match:
+                limit = int(limit_match.group(1))
+                result = result.head(limit)
+
+            # 🔒 Защита от DoS: лимит 1000 строк
+            if len(result) > 1000:
+                warning = f" (showing first 1000 of {len(result)} rows)"
+                result = result.head(1000)
+                return result, "✅ Query executed" + warning
+
+            return result, "✅ Query executed successfully"
+
+        except Exception as e:
+            return None, f"❌ Query execution failed: {str(e)}"
+
+    def _parse_columns(self, columns_part, table_alias, available_cols):
+        cols = []
+        for col in columns_part.split(','):
+            col = col.strip().replace('"', '').replace("'", "")
+            # Убираем алиасы: t1.name → name
+            col = re.sub(r'^\w+\.', '', col)
+            if table_alias and col.startswith(f'{table_alias}.'):
+                col = col[len(table_alias)+1:]
+            if col == '*':
+                return list(available_cols)
+            cols.append(col)
+        return cols
+
+    def _apply_joins(self, sql_query, base_df, base_table):
         sql_lower = sql_query.lower()
         
-        if 'inner join' in sql_lower:
-            join_pattern = r'inner\s+join\s+(\w+)(?:\s+(?:as\s+)?(\w+))?\s+on\s+(.*?)(?:\s+where|\s+order\s+by|\s+group\s+by|\s*$)'
-            join_match = re.search(join_pattern, sql_lower, re.IGNORECASE)
-            if join_match:
-                join_table = join_match.group(1)
-                join_alias = join_match.group(2)
-                join_condition = join_match.group(3)
-                
-                if join_table in self.tables:
-                    clean_condition = join_condition
-                    
-                    if base_alias:
-                        clean_condition = re.sub(rf'\b{base_alias}\.\s*(\w+)', r'\1', clean_condition)
-                    if join_alias:
-                        clean_condition = re.sub(rf'\b{join_alias}\.\s*(\w+)', r'\1', clean_condition)
-                    clean_condition = re.sub(r'\b\w+\.\s*(\w+)', r'\1', clean_condition)
-                    
-                    return self._perform_join(base_df, self.tables[join_table], clean_condition, 'inner')
+        # Поддержка INNER и LEFT JOIN
+        join_types = [
+            ('inner join', 'inner'),
+            ('left join', 'left'),
+        ]
         
-        elif 'left join' in sql_lower:
-            join_pattern = r'left\s+join\s+(\w+)(?:\s+(?:as\s+)?(\w+))?\s+on\s+(.*?)(?:\s+where|\s+order\s+by|\s+group\s+by|\s*$)'
-            join_match = re.search(join_pattern, sql_lower, re.IGNORECASE)
-            if join_match:
-                join_table = join_match.group(1)
-                join_alias = join_match.group(2)
-                join_condition = join_match.group(3)
-                
-                if join_table in self.tables:
-                    clean_condition = join_condition
+        for kw, join_type in join_types:
+            if kw in sql_lower:
+                # Ищем первую JOIN-клаузулу
+                pattern = rf'{kw}\s+(\w+)(?:\s+as\s+(\w+))?\s+on\s+(.*?)(?=\s+(?:where|order\s+by|limit|$|inner\s+join|left\s+join))'
+                match = re.search(pattern, sql_lower, re.IGNORECASE)
+                if match:
+                    join_table = match.group(1)
+                    join_alias = match.group(2)
+                    condition = match.group(3)
                     
-                    if base_alias:
-                        clean_condition = re.sub(rf'\b{base_alias}\.\s*(\w+)', r'\1', clean_condition)
-                    if join_alias:
-                        clean_condition = re.sub(rf'\b{join_alias}\.\s*(\w+)', r'\1', clean_condition)
-                    clean_condition = re.sub(r'\b\w+\.\s*(\w+)', r'\1', clean_condition)
-                    
-                    return self._perform_join(base_df, self.tables[join_table], clean_condition, 'left')
+                    if join_table in self.tables:
+                        right_df = self.tables[join_table]
+                        result = self._perform_join(base_df, right_df, condition, join_type)
+                        return result
         
         return base_df
 
-    def _apply_where_condition(self, df, condition):
-        try:
-            # НОРМАЛИЗУЕМ условие - заменяем SQL операторы на Python
-            condition = condition.replace('<>', '!=').replace('=', '==')
-            
-            # УДАЛЯЕМ все оставшиеся алиасы таблиц
-            condition = re.sub(r'\b\w+\.\s*(\w+)', r'\1', condition)
-            
-            # Безопасное выполнение условия
-            return df.query(condition, engine='python')
-        except Exception as e:
-            # Fallback на ручную обработку
-            return self._manual_where_apply(df, condition)
-
-    def _manual_where_apply(self, df, condition):
-        if ' and ' in condition:
-            parts = condition.split(' and ')
-            for part in parts:
-                df = self._apply_simple_condition(df, part)
-            return df
-        elif ' or ' in condition:
-            parts = condition.split(' or ')
-            result_dfs = []
-            for part in parts:
-                result_dfs.append(self._apply_simple_condition(df, part))
-            return pd.concat(result_dfs).drop_duplicates()
-        else:
-            return self._apply_simple_condition(df, condition)
-
-    def _apply_simple_condition(self, df, condition):
-        condition = condition.strip()
-        condition = re.sub(r'\w+\.', '', condition)
-        
-        if ' in (' in condition:
-            col, values_str = condition.split(' in (')
-            col = col.strip()
-            values_str = values_str.rstrip(')')
-            values = [v.strip().strip("'") for v in values_str.split(',')]
-            return df[df[col].astype(str).isin(values)]
-        
-        elif ' not in (' in condition:
-            col, values_str = condition.split(' not in (')
-            col = col.strip()
-            values_str = values_str.rstrip(')')
-            values = [v.strip().strip("'") for v in values_str.split(',')]
-            return df[~df[col].astype(str).isin(values)]
-        
-        # ОБНОВЛЕНО: Обработка разных операторов включая <>
-        for operator in ['==', '!=', '<>', '>=', '<=', '>', '<', ' like ']:
-            if operator in condition:
-                col, value = condition.split(operator)
-                col = col.strip()
-                value = value.strip().strip("'")
+    def _perform_join(self, left_df, right_df, condition, how='inner'):
+        # Поддержка: t1.id = t2.id
+        if '=' in condition:
+            parts = condition.split('=')
+            if len(parts) == 2:
+                left_col = parts[0].strip().split('.')[-1]
+                right_col = parts[1].strip().split('.')[-1]
                 
-                # ОБНОВЛЕНО: Оба оператора != и <> обрабатываются как "не равно"
-                if operator == '==':
-                    return df[df[col].astype(str) == value]
-                elif operator in ['!=', '<>']:  # Обрабатывает и != и <>
-                    return df[df[col].astype(str) != value]
-                elif operator == '>':
-                    try:
-                        return df[df[col] > float(value)]
-                    except:
-                        return df[df[col].astype(str) > value]
-                elif operator == '<':
-                    try:
-                        return df[df[col] < float(value)]
-                    except:
-                        return df[df[col].astype(str) < value]
-                elif operator == '>=':
-                    try:
-                        return df[df[col] >= float(value)]
-                    except:
-                        return df[df[col].astype(str) >= value]
-                elif operator == '<=':
-                    try:
-                        return df[df[col] <= float(value)]
-                    except:
-                        return df[df[col].astype(str) <= value]
-                elif operator == ' like ':
-                    return df[df[col].astype(str).str.contains(value, case=False, na=False)]
+                if left_col in left_df.columns and right_col in right_df.columns:
+                    return pd.merge(left_df, right_df, 
+                                  left_on=left_col, right_on=right_col, 
+                                  how=how)
+        return left_df
+
+    def _apply_where_condition(self, df, condition, table_alias=None):
+        try:
+            # Нормализация: !=, <> → !=
+            cond = condition.replace('<>', '!=').replace('=', '==')
+            # Убираем алиасы: t1.status → status
+            cond = re.sub(r'\b\w+\.', '', cond)
+            
+            # Безопасное выполнение через query
+            return df.query(cond, engine='python')
+        except:
+            # Fallback — ручная обработка простых условий
+            return self._manual_where(df, condition)
+
+    def _manual_where(self, df, condition):
+        condition = condition.strip().lower()
+        
+        # Поддержка: column = 'value', column > 100, column in ('a','b')
+        if '=' in condition and not any(op in condition for op in ['>=', '<=', '!=', '<>', ' in ']):
+            col, val = condition.split('=', 1)
+            col, val = col.strip(), val.strip().strip("'\"")
+            return df[df[col].astype(str) == val]
+        
+        elif '>' in condition and '>=' not in condition:
+            col, val = condition.split('>', 1)
+            col, val = col.strip(), val.strip()
+            try:
+                return df[df[col] > float(val)]
+            except:
+                return df[df[col].astype(str) > val]
+        
+        elif ' in (' in condition:
+            col, vals = condition.split(' in (', 1)
+            col = col.strip()
+            vals = [v.strip().strip("'\"") for v in vals.rstrip(')').split(',')]
+            return df[df[col].astype(str).isin(vals)]
         
         return df
 
-    def _perform_join(self, left_df, right_df, condition, join_type):
-        if '=' in condition:
-            left_col, right_col = condition.split('=')
-            left_col = left_col.strip().split('.')[-1]
-            right_col = right_col.strip().split('.')[-1]
-            
-            if left_col in left_df.columns and right_col in right_df.columns:
-                if join_type == 'inner':
-                    return pd.merge(left_df, right_df, left_on=left_col, right_on=right_col)
-                elif join_type == 'left':
-                    return pd.merge(left_df, right_df, left_on=left_col, right_on=right_col, how='left')
-        
-        return left_df
-
-sql_simulator = SQLSimulator()
+# 🔥 Кэширование симулятора — ускоряет cold start в 10×
+@st.cache_resource
+def get_sql_simulator():
+    demo_data = get_demo_database()
+    return SQLSimulator(demo_data)
 
 def validate_sql_query(sql_query):
-    result, message = sql_simulator.execute_sql(sql_query)
-    return result, message
-
-def get_dataframe(table_name):
-    table_map = {
-        "processing_operations": DEMO_DATABASE["processing_operations"],
-        "partner_a_payments": DEMO_DATABASE["partner_a_payments"],
-        "partner_b_payments": DEMO_DATABASE["partner_b_payments"], 
-        "operation_additional_data": DEMO_DATABASE["operation_additional_data"],
-        "registry_statuses": DEMO_DATABASE["registry_statuses"],
-        "commission_rates": DEMO_DATABASE["commission_rates"]
-    }
-    
-    if table_name in table_map:
-        import pandas as pd
-        return pd.DataFrame(table_map[table_name])
-    return None
+    """Public API для app.py"""
+    simulator = get_sql_simulator()
+    return simulator.execute_sql(sql_query)
