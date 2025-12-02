@@ -1,6 +1,3 @@
-# characters.py
-from ai_client import get_openai_client  # ✅ lazy
-
 CHARACTERS_PROFILES = {
     "alice": {
         "full_name": "Алиса Петрова",
@@ -30,7 +27,9 @@ CHARACTERS_PROFILES = {
 
 # В get_ai_response:
 def get_ai_response(character_key, user_message):
-    client = get_openai_client()  # ✅
+    # Локальный импорт — только при вызове функции!
+    from ai_client import OpenAIClient
+    client = OpenAIClient()
     return client.generate_response(character_key, user_message)
 
 def get_smart_fallback(character_key, user_message):
