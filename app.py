@@ -124,7 +124,7 @@ def initialize_session():
         st.session_state.sql_history = []
         st.session_state.sql_last_result = None
         st.session_state.sql_last_feedback = ""
-        st.session_state.sql_last_query = ""
+        st.session_state.sql_last_query = ""  # ✅ КРИТИЧЕСКИ ВАЖНО!
         
         # 📚 База знаний
         st.session_state.kb_expanded = {}
@@ -408,7 +408,7 @@ def sql_sandbox():
         col1, col2 = st.columns([3, 1])
         with col1:
             sql_query = st.text_area("SQL запрос:", 
-                                    value=st.session_state.sql_last_query,
+                                    value=st.session_state.get("sql_last_query", ""),  # ✅ безопасный .get()
                                     height=120,
                                     key="sql_input")
         with col2:
@@ -497,15 +497,12 @@ def main():
         display_chat(st.session_state.active_chat)
         # Обработка AI — только если есть pending
         if f'pending_response_{st.session_state.active_chat}' in st.session_state:
-            from characters import get_ai_response
-            CHARACTERS_RESPONSES, GROUP_CHATS = {}, {}  # не нужны здесь
-            chat_id = st.session_state.active_chat
-            pending_key = f'pending_response_{chat_id}'
+            pending_key = f'pending_response_{st.session_state.active_chat}'
             if st.session_state.get(pending_key):
+                chat_id = st.session_state.active_chat
                 user_msg = st.session_state[pending_key]
                 
                 # Задержка (ускоренная для демо)
-                import random
                 delays = {"alice": 2, "maxim": 5, "kirill": 2, "dba_team": 2, "partner_a": 3, "partner_b": 3}
                 time.sleep(delays.get(chat_id, 2))
                 
@@ -515,6 +512,7 @@ def main():
                 st.rerun()
                 
                 # Генерация ответа
+                from characters import get_ai_response
                 response = get_ai_response(chat_id, user_msg)
                 sender_names = {
                     "dba_team": "Михаил Шилин",
