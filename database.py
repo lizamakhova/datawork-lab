@@ -1,7 +1,7 @@
+import copy
 import random
 
-# Генератор тестовых данных
-DEMO_DATABASE = {
+_BASE_DATA = {
     "processing_operations": [
         # PARTNER_A операции (60)
         *[{"processing_id": f"PA{i:03d}", "created_date": "2025-01-15", "finalized_date": "2025-01-15", 
@@ -73,24 +73,26 @@ DEMO_DATABASE = {
     ]
 }
 
-# Расчет комиссий и выручки
-def calculate_commissions():
-    for op in DEMO_DATABASE["processing_operations"]:
+def calculate_commissions(data):
+    for op in data["processing_operations"]:
         if op["status"] == "success" and op["commission_amount"] is None:
-            rate = next(r for r in DEMO_DATABASE["commission_rates"] if r["partner_contract_id"] == op["partner_contract_id"])
+            rate = next(r for r in data["commission_rates"] if r["partner_contract_id"] == op["partner_contract_id"])
             op["commission_amount"] = round(op["amount"] * rate["commission_percent"] + rate["fixed_commission"], 2)
     
-    for payment in DEMO_DATABASE["partner_a_payments"]:
+    for payment in data["partner_a_payments"]:
         if payment["commission"] is None and payment["status"] == "COMPLETED":
-            op = next(op for op in DEMO_DATABASE["processing_operations"] if op["processing_id"] == payment["processing_id"])
+            op = next(op for op in data["processing_operations"] if op["processing_id"] == payment["processing_id"])
             payment["commission"] = op["commission_amount"]
             
-    for payment in DEMO_DATABASE["partner_b_payments"]:
+    for payment in data["partner_b_payments"]:
         if payment["commission"] is None and payment["status"] == "SUCCESS":
-            rate = next(r for r in DEMO_DATABASE["commission_rates"] if r["partner_contract_id"] == "PARTNER_B")
-            add_data = next(add for add in DEMO_DATABASE["operation_additional_data"] 
+            rate = next(r for r in data["commission_rates"] if r["partner_contract_id"] == "PARTNER_B")
+            add_data = next(add for add in data["operation_additional_data"] 
                           if add["additional_value"] == payment["partner_id"] and add["additional_type"] == "partner_operation_id")
-            op = next(op for op in DEMO_DATABASE["processing_operations"] if op["processing_id"] == add_data["processing_id"])
+            op = next(op for op in data["processing_operations"] if op["processing_id"] == add_data["processing_id"])
             payment["commission"] = round(op["amount"] * rate["commission_percent"] + rate["fixed_commission"], 2)
 
-calculate_commissions()
+def get_demo_database():
+    data = copy.deepcopy(_BASE_DATA)
+    calculate_commissions(data)
+    return data
