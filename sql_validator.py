@@ -2,14 +2,9 @@ import pandas as pd
 import re
 import streamlit as st
 
-# Lazy-импорт — критично для cold start
-def get_demo_database():
-    from database import get_demo_database as _get
-    return _get()
-
 class SQLSimulator:
     def __init__(self, demo_data):
-        """demo_data — dict с таблицами"""
+        """demo_data — dict с таблицами из get_demo_database()"""
         self.tables = {
             "processing_operations": pd.DataFrame(demo_data["processing_operations"]),
             "partner_a_payments": pd.DataFrame(demo_data["partner_a_payments"]),
@@ -166,20 +161,17 @@ class SQLSimulator:
         try:
             # Нормализация: !=, <> → !=
             cond = condition.replace('<>', '!=').replace('=', '==')
-            # Убираем алиасы: t1.status → status
+            # Убираем алиасы
             cond = re.sub(r'\b\w+\.', '', cond)
             
-            # Безопасное выполнение через query
             return df.query(cond, engine='python')
         except:
-            # Fallback — ручная обработка простых условий
             return self._manual_where(df, condition)
 
     def _manual_where(self, df, condition):
         condition = condition.strip().lower()
         
-        # Поддержка: column = 'value', column > 100, column in ('a','b')
-        if '=' in condition and not any(op in condition for op in ['>=', '<=', '!=', '<>', ' in ']):
+        if '=' in condition and '>=' not in condition and '<=' not in condition and '!=' not in condition and '<>' not in condition:
             col, val = condition.split('=', 1)
             col, val = col.strip(), val.strip().strip("'\"")
             return df[df[col].astype(str) == val]
@@ -200,13 +192,13 @@ class SQLSimulator:
         
         return df
 
-# 🔥 Кэширование симулятора — ускоряет cold start в 10×
+# 🔥 Кэширование — критично для скорости
 @st.cache_resource
 def get_sql_simulator():
+    from database import get_demo_database
     demo_data = get_demo_database()
     return SQLSimulator(demo_data)
 
 def validate_sql_query(sql_query):
-    """Public API для app.py"""
     simulator = get_sql_simulator()
     return simulator.execute_sql(sql_query)
