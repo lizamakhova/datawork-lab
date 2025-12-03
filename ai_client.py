@@ -39,7 +39,7 @@ class OpenAIClient:
         except ValueError:
             return "❌ Запрос содержит потенциально опасные команды. Пожалуйста, переформулируйте."
 
-        # Задержка (реалистичное время реакции)
+        # Задержка (реалистичное время реакции — ускорено для демо)
         delay = self._get_character_delay(character)
         time.sleep(delay)
 
@@ -75,7 +75,7 @@ class OpenAIClient:
                 messages=messages,
                 temperature=0.3,
                 max_tokens=500,
-                timeout=10
+                timeout=10  # Защита от зависаний
             )
 
             result = response.choices[0].message.content
@@ -83,11 +83,6 @@ class OpenAIClient:
             return html.escape(result, quote=False)
 
         except Exception as e:
-            try:
-                import streamlit as st
-                st.error(f"❌ Ошибка OpenAI: {str(e)[:100]}")
-            except:
-                pass
             return None
 
     def _get_detailed_prompt(self, character):
@@ -573,12 +568,13 @@ class OpenAIClient:
         return text
 
     def _get_character_delay(self, character):
+        # ⚡ Ускорено для демо (1–5 сек)
         delays = {
-            "alice": random.randint(5, 15),
-            "maxim": 30,
-            "kirill": 10,
-            "dba_team": 10,
-            "partner_a": 15,
-            "partner_b": 20
+            "alice": random.randint(1, 3),
+            "maxim": 5,
+            "kirill": 2,
+            "dba_team": 2,
+            "partner_a": 3,
+            "partner_b": 4
         }
-        return delays.get(character, 5)
+        return delays.get(character, 2)
