@@ -1,3 +1,5 @@
+import random
+
 CHARACTERS_PROFILES = {
     "alice": {
         "full_name": "Алиса Петрова",
@@ -16,24 +18,44 @@ CHARACTERS_PROFILES = {
         "work_hours": "Не указано"
     },
     "kirill": {
-        "full_name": "Кирилл Смирнов", 
+        "full_name": "Кирилл Смирнов",
         "photo": "👨",
         "status": "🟢 Онлайн",
-        "role": "Product manager",
-        "department": "", 
-        "work_hours": "9:00-18:00 МСК"
+        "role": "Продакт-менеджер",
+        "department": "Продуктовый отдел",
+        "work_hours": "10:00-19:00 МСК"
     }
 }
 
-# В get_ai_response:
+GROUP_CHATS = {
+    "dba_team": {
+        "name": "#dba-team",
+        "icon": "🛠️",
+        "description": "Команда баз данных — выполняем SQL запросы",
+        "members": "3 участника"
+    },
+    "partner_a": {
+        "name": "#partner_a_operations_chat",
+        "icon": "🤝",
+        "description": "Операции с Партнером А — вопросы по реестрам и комиссиям", 
+        "members": "Поддержка Партнер А + наша команда"
+    },
+    "partner_b": {
+        "name": "#partner_b_operations_chat", 
+        "icon": "🤝",
+        "description": "Операции с Партнером Б — согласование реестров и статусов",
+        "members": "Поддержка Партнер Б + наша команда"
+    }
+}
+
 def get_ai_response(character_key, user_message):
-    # Локальный импорт — только при вызове функции!
+    # ✅ Локальный импорт — только при вызове!
     from ai_client import OpenAIClient
     client = OpenAIClient()
     return client.generate_response(character_key, user_message)
 
+# =============== Fallback логика (без OpenAI) ===============
 def get_smart_fallback(character_key, user_message):
-    """Умные fallback ответы БЕЗ эмодзи"""
     message_lower = user_message.lower()
     
     if character_key == "alice":
@@ -66,13 +88,21 @@ def get_smart_fallback(character_key, user_message):
     
     elif character_key == "maxim":
         if any(word in message_lower for word in ["операц", "успешн", "выручк", "доход"]):
-            return "Нужна общая выручка за вчера по успешным операциям. ASAP к 11:00 для встречи с инвестороми. За деталями по данным - к Алисе."
+            return "Нужна общая выручка за вчера по успешным операциям. ASAP к 11:00 для встречи с инвесторами. За деталями по данным - к Алисе."
         
         elif any(word in message_lower for word in ["срок", "когда", "врем"]):
             return "Нужно к 11:00 к встрече с инвесторами. ASAP! Если не успеваешь - скажи заранее."
         
         else:
             return "Зайди к Алисе за техническими деталями. Мне нужны готовые цифры для отчетности."
+    
+    elif character_key == "kirill":
+        if any(word in message_lower for word in ["статистик", "отчет", "юзер"]):
+            return "Нужна статистика по юзерам за последнюю неделю — сколько новых, сколько ушедших. Горит!"
+        elif any(word in message_lower for word in ["срочно", "горит", "критичн"]):
+            return "Критично для отчета продукту. Какие данные уже есть?"
+        else:
+            return "Горит! Нужны данные как можно скорее. Что именно интересует?"
     
     elif character_key == "dba_team":
         if any(word in message_lower for word in ["update", "insert", "delete"]):
@@ -98,6 +128,7 @@ def get_smart_fallback(character_key, user_message):
     else:
         return "Давай разберемся с этим вопросом. Расскажи подробнее что именно нужно сделать?"
 
+# =============== Интерфейс для app.py ===============
 CHARACTERS_RESPONSES = {
     "alice": {
         "name": "Алиса Петрова",
@@ -106,29 +137,9 @@ CHARACTERS_RESPONSES = {
     "maxim": {
         "name": "Максим Волков", 
         "get_response": lambda message: get_ai_response("maxim", message)
-    }
-}
-
-GROUP_CHATS = {
-    "dba_team": {
-        "name": "#dba-team",
-        "icon": "🛠️",
-        "description": "Команда баз данных - выполняем SQL запросы",
-        "members": "3 участника",
-        "get_response": lambda message: get_ai_response("dba_team", message)
     },
-    "partner_a": {
-        "name": "#partner_a_operations_chat",
-        "icon": "🤝",
-        "description": "Операции с Партнером А - вопросы по реестрам и комиссиям", 
-        "members": "Поддержка Партнер А + наша команда",
-        "get_response": lambda message: get_ai_response("partner_a", message)
-    },
-    "partner_b": {
-        "name": "#partner_b_operations_chat", 
-        "icon": "🤝",
-        "description": "Операции с Партнером Б - согласование реестров и статусов",
-        "members": "Поддержка Партнер Б + наша команда",
-        "get_response": lambda message: get_ai_response("partner_b", message)
+    "kirill": {
+        "name": "Кирилл Смирнов",
+        "get_response": lambda message: get_ai_response("kirill", message)
     }
 }
