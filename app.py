@@ -12,12 +12,6 @@ def get_demo_database():
     from database import get_demo_database as _get
     return _get()
 
-def get_openai_client():
-    if 'openai_client' not in st.session_state:
-        from ai_client import OpenAIClient
-        st.session_state.openai_client = OpenAIClient()
-    return st.session_state.openai_client
-
 def get_database_schema():
     from database_schema import DATABASE_SCHEMA
     return DATABASE_SCHEMA
@@ -266,7 +260,7 @@ def display_profile(chat_id):
 # ==========================================
 # UI: отображение чата
 # ==========================================
-def render_message(msg, is_last=False, is_typing=False):
+def render_message(msg, is_typing=False):
     from_user = msg['role'] == 'user'
     sender_name = "Вы" if from_user else msg.get('sender_name', 'Система')
     
@@ -345,20 +339,19 @@ def display_chat(chat_id):
     # История
     chat_history = st.session_state.chats[chat_id]
     for i, msg in enumerate(chat_history):
-        is_last = (i == len(chat_history) - 1)
-        render_message(msg, is_last=is_last)
+        render_message(msg, is_typing=False)
     
     # Индикатор "печатает"
     if chat_history and chat_history[-1]['role'] == 'user' and not chat_history[-1].get('read', False):
-        fake_bot = {"role": "bot", "content": "", "sender_name": display_names[chat_id]}
-        render_message(fake_bot, is_typing=True)
+        render_message({"role": "bot", "content": "", "sender_name": display_names[chat_id]}, is_typing=True)
     
-    # ✅ Форма — только один раз, после истории
+    # ✅ Форма — ОДИН РАЗ, БЕЗ ДУБЛИРОВАНИЯ
     with st.form(key=f'chat_form_{chat_id}', clear_on_submit=True):
         user_input = st.text_input("Сообщение:", key=f"input_{chat_id}", placeholder="Напишите сообщение...")
         submitted = st.form_submit_button("Отправить", type="primary")
         
         if submitted and user_input.strip():
+            # Добавляем наше сообщение
             new_msg = {
                 "role": "user",
                 "content": user_input.strip(),
@@ -367,7 +360,56 @@ def display_chat(chat_id):
                 "id": f"msg_{int(time.time()*1000)}"
             }
             st.session_state.chats[chat_id].append(new_msg)
-            st.session_state[f'pending_response_{chat_id}'] = user_input.strip()
+            
+            # 🟢 Генерация ответа — сразу, без rerun-ов внутри цикла
+            try:
+                from characters import get_ai_response
+                
+                # ⏱️ Имитация: сначала "прочитано", потом "печатает", потом ответ
+                delays = {
+                    "alice": 1.5,
+                    "maxim": 3,
+                    "kirill": 2,
+                    "dba_team": 2,
+                    "partner_a": 2.5,
+                    "partner_b": 2.5
+                }
+                delay = delays.get(chat_id, 2)
+                
+                # Имитация чтения
+                time.sleep(delay - 0.8)
+                if st.session_state.chats[chat_id]:
+                    st.session_state.chats[chat_id][-1]["read"] = True
+                st.rerun()  # → покажет ✔️ + "печатает…"
+                
+                # Имитация набора текста
+                time.sleep(0.8)
+                
+                # Генерация ответа
+                response = get_ai_response(chat_id, user_input.strip())
+                sender_names = {
+                    "dba_team": "Михаил Шилин",
+                    "partner_a": "Анна Новикова",
+                    "partner_b": "Дмитрий Семенов",
+                }
+                st.session_state.chats[chat_id].append({
+                    "role": "bot",
+                    "content": response,
+                    "timestamp": time.time(),
+                    "read": True,
+                    "sender_name": sender_names.get(chat_id, display_names[chat_id]),
+                    "id": f"msg_{int(time.time()*1000)}"
+                })
+                
+            except Exception as e:
+                # 🚨 Ошибка в чате
+                st.session_state.chats[chat_id].append({
+                    "role": "bot",
+                    "content": f"❌ Ошибка: {str(e)}",
+                    "sender_name": "Система",
+                    "read": True
+                })
+            
             st.rerun()
 
 # ==========================================
@@ -408,7 +450,7 @@ def sql_sandbox():
         col1, col2 = st.columns([3, 1])
         with col1:
             sql_query = st.text_area("SQL запрос:", 
-                                    value=st.session_state.get("sql_last_query", ""),  # ✅ безопасный .get()
+                                    value=st.session_state.get("sql_last_query", ""),
                                     height=120,
                                     key="sql_input")
         with col2:
@@ -492,48 +534,11 @@ def main():
     render_sidebar()
     scenario_engine()
     
-    # Основной контент
+    # Основной контент — БЕЗ вызова process_ai_response!
     if st.session_state.active_tab == "chats":
         display_chat(st.session_state.active_chat)
-        # Обработка AI — только если есть pending
-        if f'pending_response_{st.session_state.active_chat}' in st.session_state:
-            pending_key = f'pending_response_{st.session_state.active_chat}'
-            if st.session_state.get(pending_key):
-                chat_id = st.session_state.active_chat
-                user_msg = st.session_state[pending_key]
-                
-                # Задержка (ускоренная для демо)
-                delays = {"alice": 2, "maxim": 5, "kirill": 2, "dba_team": 2, "partner_a": 3, "partner_b": 3}
-                time.sleep(delays.get(chat_id, 2))
-                
-                # Помечаем как прочитано
-                if st.session_state.chats[chat_id]:
-                    st.session_state.chats[chat_id][-1]["read"] = True
-                st.rerun()
-                
-                # Генерация ответа
-                from characters import get_ai_response
-                response = get_ai_response(chat_id, user_msg)
-                sender_names = {
-                    "dba_team": "Михаил Шилин",
-                    "partner_a": "Анна Новикова",
-                    "partner_b": "Дмитрий Семенов",
-                }
-                st.session_state.chats[chat_id].append({
-                    "role": "bot",
-                    "content": response,
-                    "timestamp": time.time(),
-                    "read": True,
-                    "sender_name": sender_names.get(chat_id, 
-                        {"alice": "Алиса Петрова", "maxim": "Максим Волков", "kirill": "Кирилл Смирнов"}[chat_id]),
-                    "id": f"msg_{int(time.time()*1000)}"
-                })
-                st.session_state[pending_key] = None
-                st.rerun()
-    
     elif st.session_state.active_tab == "sql":
         sql_sandbox()
-    
     else:
         knowledge_base()
 
