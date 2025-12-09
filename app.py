@@ -154,7 +154,7 @@ def render_sidebar():
         </div>
         """, unsafe_allow_html=True)
         
-        # 📌 Чаты
+        # 📌 Чаты — ✅ ДИНАМИЧЕСКИЙ СЧЁТЧИК
         st.markdown("### 💬 Чаты")
         chat_labels = {
             "alice": "👩‍💼 Алиса Петрова",
@@ -167,7 +167,7 @@ def render_sidebar():
         for chat_id, label in chat_labels.items():
             unread = sum(1 for m in st.session_state.chats[chat_id] 
                          if m['role'] == 'bot' and not m.get('read', False))
-            badge = f" ({unread})" if unread else ""
+            badge = f" ({unread})" if unread > 0 else ""
             if st.button(f"{label}{badge}", key=f"nav_{chat_id}", use_container_width=True):
                 st.session_state.active_chat = chat_id
                 st.session_state.active_tab = "chats"
@@ -296,6 +296,11 @@ def render_message(msg, is_typing=False):
     """, unsafe_allow_html=True)
 
 def display_chat(chat_id):
+    # ✅ АВТОМАТИЧЕСКИ ПОМЕЧАЕМ ВСЕ СООБЩЕНИЯ ЧАТА КАК ПРОЧИТАННЫЕ
+    for msg in st.session_state.chats[chat_id]:
+        if msg['role'] == 'bot' and not msg.get('read', False):
+            msg['read'] = True
+    
     display_names = {
         "alice": "Алиса Петрова",
         "maxim": "Максим Волков",
@@ -514,6 +519,8 @@ def knowledge_base():
 def scenario_engine():
     if st.session_state.active_scenario and st.session_state.scenario_start_time:
         elapsed = time.time() - st.session_state.scenario_start_time
+        
+        # Максим — через 2 сек
         if elapsed > 2 and not st.session_state.get('scenario_step_1'):
             st.session_state.chats["maxim"].append({
                 "role": "bot",
@@ -524,6 +531,19 @@ def scenario_engine():
                 "id": f"auto_{int(time.time() * 1000)}"
             })
             st.session_state.scenario_step_1 = True
+            st.rerun()
+        
+        # ✅ Кирилл — через 30 сек (конфликт дедлайнов)
+        if elapsed > 30 and not st.session_state.get('scenario_step_kirill'):
+            st.session_state.chats["kirill"].append({
+                "role": "bot",
+                "content": "У меня тут тоже горит! Проверь статусы в реестре Партнёра А — они не совпадают с нашими данными. К 11:00!",
+                "timestamp": time.time(),
+                "read": False,
+                "sender_name": "Кирилл Смирнов",
+                "id": f"auto_kirill_{int(time.time() * 1000)}"
+            })
+            st.session_state.scenario_step_kirill = True
             st.rerun()
 
 def report_result():
