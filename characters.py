@@ -49,7 +49,6 @@ GROUP_CHATS = {
 }
 
 def get_ai_response(character_key, user_message):
-    # ✅ Безопасный локальный импорт
     from ai_client import OpenAIClient
     client = OpenAIClient()
     return client.generate_response(character_key, user_message)
@@ -127,6 +126,7 @@ def get_smart_fallback(character_key, user_message):
     else:
         return "Давай разберемся с этим вопросом. Расскажи подробнее что именно нужно сделать?"
 
+# ✅ КРИТИЧНО: ДОБАВЛЕНЫ partner_a и partner_b
 CHARACTERS_RESPONSES = {
     "alice": {
         "name": "Алиса Петрова",
@@ -139,5 +139,17 @@ CHARACTERS_RESPONSES = {
     "kirill": {
         "name": "Кирилл Смирнов",
         "get_response": lambda message: get_ai_response("kirill", message)
+    },
+    "dba_team": {
+        "name": "#dba-team",
+        "get_response": lambda message: get_ai_response("dba_team", message)
+    },
+    "partner_a": {
+        "name": "#partner_a_operations_chat",
+        "get_response": lambda message: get_ai_response("partner_a", message)
+    },
+    "partner_b": {
+        "name": "#partner_b_operations_chat",
+        "get_response": lambda message: get_ai_response("partner_b", message)
     }
 }
