@@ -1,0 +1,96 @@
+{
+  "version": "1.0",
+  "mvp_triggers": [
+    {
+      "id": "clarify_deadline",
+      "block": "soft_skills",
+      "condition": "chat_regex",
+      "pattern": "(срок|дедлайн|время|когда|до\\s+\\d{1,2}:\\d{2})",
+      "points": 10,
+      "feedback": "✅ Уточнил срок — критично для приоритизации"
+    },
+    {
+      "id": "defer_non_urgent",
+      "block": "soft_skills",
+      "condition": "chat_regex_to",
+      "to": "alice",
+      "pattern": "(отлож|перенес|согласуй.*Кирилл)",
+      "points": 6,
+      "feedback": "✅ Согласовал отложенную задачу с руководителем"
+    },
+    {
+      "id": "polite_language",
+      "block": "soft_skills",
+      "condition": "chat_regex",
+      "pattern": "(спасибо|пожалуйста|можно|не могли бы)",
+      "points": 1,
+      "feedback": "👍 Вежливая коммуникация"
+    },
+    {
+      "id": "missing_is_excluded",
+      "block": "data_integrity",
+      "condition": "sql_missing_column",
+      "table": "registry_statuses",
+      "column": "is_excluded",
+      "points": -20,
+      "feedback": "❌ Не учтён is_excluded=1 — искажение выручки"
+    },
+    {
+      "id": "mix_partner_ids",
+      "block": "data_integrity",
+      "condition": "sql_regex",
+      "pattern": "(partner_a.*PTR_B_|partner_b.*PTR_A_)",
+      "points": -20,
+      "feedback": "❌ Перепутаны ID партнёров"
+    },
+    {
+      "id": "blame_partner",
+      "block": "data_integrity",
+      "condition": "chat_regex_to",
+      "to": "partner_a|partner_b",
+      "pattern": "(ошибка у вас|неправильные данные|вы сломали)",
+      "points": -15,
+      "feedback": "🚫 Обвинительная лексика в адрес партнёра"
+    },
+    {
+      "id": "root_cause_analysis",
+      "block": "data_integrity",
+      "condition": "chat_regex",
+      "pattern": "(потому что|из-за|причина|почему так|корнев.*причин)",
+      "points": 5,
+      "feedback": "🔍 Ищет корневую причину, а не симптомы"
+    },
+    {
+      "id": "create_backup_table",
+      "block": "hard_skills",
+      "condition": "sql_regex",
+      "pattern": "CREATE\\s+TABLE.*_backup.*AS\\s+SELECT",
+      "points": 10,
+      "feedback": "🛡️ Создал бэкап перед изменением — профессионально"
+    },
+    {
+      "id": "use_additional_data_correctly",
+      "block": "hard_skills",
+      "condition": "sql_regex",
+      "pattern": "JOIN\\s+operation_additional_data\\s+ON.*partner_operation_id",
+      "points": 10,
+      "feedback": "🔗 Верно связал данные Партнёра Б через additional_data"
+    },
+    {
+      "id": "verify_after_update",
+      "block": "hard_skills",
+      "condition": "sql_sequence",
+      "pattern": ["UPDATE", "SELECT.*FROM.*WHERE.*processing_id"],
+      "within_queries": 3,
+      "points": 8,
+      "feedback": "🔍 Проверил результат сразу после изменения"
+    },
+    {
+      "id": "task_report_filled",
+      "block": "process_documentation",
+      "condition": "report_complete",
+      "points": 12,
+      "feedback": "📋 Полный отчёт по задаче — готов к аудиту"
+    }
+  ]
+}
