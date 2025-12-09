@@ -167,7 +167,7 @@ def render_sidebar():
         for chat_id, label in chat_labels.items():
             unread = sum(1 for m in st.session_state.chats[chat_id] 
                          if m['role'] == 'bot' and not m.get('read', False))
-            badge = f" <span style='background:#e33;color:white;padding:1px 6px;border-radius:10px;font-size:10px;'>{unread}</span>" if unread else ""
+            badge = f" ({unread})" if unread else ""
             if st.button(f"{label}{badge}", key=f"nav_{chat_id}", use_container_width=True):
                 st.session_state.active_chat = chat_id
                 st.session_state.active_tab = "chats"
@@ -345,15 +345,8 @@ def display_chat(chat_id):
                         break
             
             try:
-                from characters import get_ai_response
-                delays = {"alice": 1.5, "maxim": 3, "kirill": 2, "dba_team": 2, "partner_a": 2.5, "partner_b": 2.5}
-                delay = delays.get(chat_id, 2)
-                time.sleep(delay - 0.8)
-                if st.session_state.chats[chat_id]:
-                    st.session_state.chats[chat_id][-1]["read"] = True
-                st.rerun()
-                time.sleep(0.8)
-                response = get_ai_response(chat_id, user_input.strip())
+                from characters import CHARACTERS_RESPONSES
+                response = CHARACTERS_RESPONSES[chat_id]['get_response'](user_input.strip())
                 sender_names = {
                     "dba_team": "Михаил Шилин",
                     "partner_a": "Анна Новикова",
@@ -423,7 +416,6 @@ def task_report_form():
             st.session_state.task_reports.append(new_report)
             st.session_state.events.append({"type": "report", "data": new_report, "timestamp": time.time()})
             
-            # Оценка отчёта
             report_score = evaluator.evaluate_task_report(description, action, result)
             st.session_state.scores["process_documentation"] += report_score["score"]
             
@@ -484,7 +476,6 @@ def sql_sandbox():
                     })
                     st.session_state.sql_history = st.session_state.sql_history[-10:]
                     
-                    # Лог событий + оценка
                     st.session_state.events.append({"type": "sql", "query": sql_query, "timestamp": time.time()})
                     triggers = evaluator.evaluate_sql_query(sql_query)
                     for t in triggers:
@@ -553,7 +544,6 @@ def report_result():
             st.caption("🔹 Заполните все 3 пункта отчёта для максимума")
         st.markdown("---")
     
-    # Радар
     fig = go.Figure(data=go.Scatterpolar(
         r=[min(v["score"], v["max"]) for v in blocks.values()],
         theta=[v["name"] for v in blocks.values()],
@@ -566,7 +556,6 @@ def report_result():
     )
     st.plotly_chart(fig, use_container_width=True)
     
-    # Рекомендации
     recommendations = []
     if blocks["soft_skills"]["score"] < 70:
         recommendations.append("🔹 Практикуйте уточнение сроков и приоритетов перед началом задачи")
