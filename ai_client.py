@@ -2,10 +2,10 @@ import time
 import random
 import re
 import html
+import traceback
 
 class OpenAIClient:
     def __init__(self):
-        # Lazy import — только при создании экземпляра
         try:
             import streamlit as st
             self.api_key = st.secrets.get("OPENAI_API_KEY")
@@ -14,11 +14,12 @@ class OpenAIClient:
                 self.client = openai.OpenAI(api_key=self.api_key)
             else:
                 self.client = None
-        except Exception:
+                st.error("❌ OPENAI_API_KEY не настроен в Secrets")
+        except Exception as e:
             self.client = None
+            st.error(f"❌ Ошибка инициализации OpenAI: {str(e)}")
 
     def _sanitize_input(self, text: str) -> str:
-        """Базовая защита от инъекций на входе"""
         dangerous_patterns = [
             r'\b(UPDATE|INSERT|DELETE|DROP|ALTER|CREATE|TRUNCATE|EXEC)\b',
             r';\s*(--|#|/\*)',
@@ -33,15 +34,21 @@ class OpenAIClient:
         return text
 
     def generate_response(self, character, user_message, chat_history=[]):
-        # 🔒 Санитизация входа
         try:
             user_message = self._sanitize_input(user_message)
         except ValueError:
             return "❌ Запрос содержит потенциально опасные команды. Пожалуйста, переформулируйте."
 
-        # Задержка (реалистичное время реакции — ускорено для демо)
-        delay = self._get_character_delay(character)
-        time.sleep(delay)
+        # Задержка (ускорено для демо)
+        delays = {
+            "alice": random.randint(1, 2),
+            "maxim": 3,
+            "kirill": 2,
+            "dba_team": 2,
+            "partner_a": 2.5,
+            "partner_b": 2.5
+        }
+        time.sleep(delays.get(character, 2))
 
         # Попытка OpenAI
         ai_response = self._try_openai(character, user_message, chat_history)
@@ -56,18 +63,13 @@ class OpenAIClient:
             return None
 
         try:
-            # Lazy import — только при вызове
             import streamlit as st
-
             messages = [
                 {"role": "system", "content": self._get_detailed_prompt(character)}
             ]
-
-            # История (последние 6 сообщений)
             for msg in chat_history[-6:]:
                 role = "user" if msg["role"] == "user" else "assistant"
                 messages.append({"role": role, "content": msg["content"]})
-
             messages.append({"role": "user", "content": user_message})
 
             response = self.client.chat.completions.create(
@@ -75,7 +77,7 @@ class OpenAIClient:
                 messages=messages,
                 temperature=0.3,
                 max_tokens=500,
-                timeout=10  # Защита от зависаний
+                timeout=10
             )
 
             result = response.choices[0].message.content
@@ -83,6 +85,7 @@ class OpenAIClient:
             return html.escape(result, quote=False)
 
         except Exception as e:
+            st.error(f"❌ Ошибка OpenAI: {str(e)[:100]}")
             return None
 
     def _get_detailed_prompt(self, character):
@@ -566,15 +569,3 @@ class OpenAIClient:
             if re.search(r'(SELECT|INSERT|UPDATE|DELETE)\s+.+\s+(FROM|INTO|SET|WHERE)', text, re.IGNORECASE):
                 return "Вижу что ты просишь готовый запрос! Попробуй сам написать, а я помогу его улучшить. Это лучший способ научиться. Покажи свой вариант!"
         return text
-
-    def _get_character_delay(self, character):
-        # ⚡ Ускорено для демо (1–5 сек)
-        delays = {
-            "alice": random.randint(1, 3),
-            "maxim": 5,
-            "kirill": 2,
-            "dba_team": 2,
-            "partner_a": 3,
-            "partner_b": 4
-        }
-        return delays.get(character, 2)
