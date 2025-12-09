@@ -154,7 +154,7 @@ def render_sidebar():
         </div>
         """, unsafe_allow_html=True)
         
-        # 📌 Чаты — ✅ ДИНАМИЧЕСКИЙ СЧЁТЧИК
+        # 📌 Чаты — ДИНАМИЧЕСКИЙ СЧЁТЧИК
         st.markdown("### 💬 Чаты")
         chat_labels = {
             "alice": "👩‍💼 Алиса Петрова",
@@ -295,8 +295,73 @@ def render_message(msg, is_typing=False):
     </div>
     """, unsafe_allow_html=True)
 
+def process_ai_response(chat_id):
+    """Обработка ответа с анимацией: прочитано → печатает → ответ"""
+    pending_key = f'pending_response_{chat_id}'
+    if pending_key not in st.session_state or not st.session_state[pending_key]:
+        return
+    
+    user_msg = st.session_state[pending_key]
+    
+    # Задержки по персонажу
+    delays = {
+        "alice": 1.5,
+        "maxim": 3.0,
+        "kirill": 2.0,
+        "dba_team": 2.5,
+        "partner_a": 3.0,
+        "partner_b": 3.0
+    }
+    delay = delays.get(chat_id, 2.0)
+    
+    # 1. Имитация "прочитано" (через delay - 0.8 сек)
+    time.sleep(delay - 0.8)
+    if st.session_state.chats[chat_id] and st.session_state.chats[chat_id][-1]['role'] == 'user':
+        st.session_state.chats[chat_id][-1]["read"] = True
+    st.rerun()  # → появился ✔️ и "печатает…"
+    
+    # 2. Имитация "печатает…" (0.8 сек)
+    time.sleep(0.8)
+    
+    # 3. Генерация ответа
+    try:
+        from characters import CHARACTERS_RESPONSES
+        response = CHARACTERS_RESPONSES[chat_id]['get_response'](user_msg)
+        sender_names = {
+            "dba_team": "Михаил Шилин",
+            "partner_a": "Анна Новикова",
+            "partner_b": "Дмитрий Семенов",
+        }
+        display_names = {
+            "alice": "Алиса Петрова",
+            "maxim": "Максим Волков",
+            "kirill": "Кирилл Смирнов",
+            "dba_team": "#dba-team",
+            "partner_a": "#partner_a_operations_chat",
+            "partner_b": "#partner_b_operations_chat",
+        }
+        st.session_state.chats[chat_id].append({
+            "role": "bot",
+            "content": response,
+            "timestamp": time.time(),
+            "read": True,
+            "sender_name": sender_names.get(chat_id, display_names[chat_id]),
+            "id": f"msg_{int(time.time()*1000)}"
+        })
+    except Exception as e:
+        st.session_state.chats[chat_id].append({
+            "role": "bot",
+            "content": f"❌ Ошибка: {str(e)}",
+            "sender_name": "Система",
+            "read": True
+        })
+    
+    # Очистка pending
+    st.session_state[pending_key] = None
+    st.rerun()
+
 def display_chat(chat_id):
-    # ✅ АВТОМАТИЧЕСКИ ПОМЕЧАЕМ ВСЕ СООБЩЕНИЯ ЧАТА КАК ПРОЧИТАННЫЕ
+    # Автоматически помечаем все сообщения чата как прочитанные при открытии
     for msg in st.session_state.chats[chat_id]:
         if msg['role'] == 'bot' and not msg.get('read', False):
             msg['read'] = True
@@ -321,58 +386,33 @@ def display_chat(chat_id):
         gc = GROUP_CHATS[chat_id]
         st.caption(f"{gc['description']} • {gc['members']}")
     
+    # Отображаем историю
     for msg in st.session_state.chats[chat_id]:
         render_message(msg, is_typing=False)
     
-    if st.session_state.chats[chat_id] and st.session_state.chats[chat_id][-1]['role'] == 'user' and not st.session_state.chats[chat_id][-1].get('read', False):
+    # Индикатор "печатает…", если есть pending
+    if f'pending_response_{chat_id}' in st.session_state and st.session_state[f'pending_response_{chat_id}']:
         render_message({"role": "bot", "content": "", "sender_name": display_names[chat_id]}, is_typing=True)
     
+    # Форма отправки — ОДИН РАЗ
     with st.form(key=f'chat_form_{chat_id}', clear_on_submit=True):
         user_input = st.text_input("Сообщение:", key=f"input_{chat_id}", placeholder="Напишите сообщение...")
         submitted = st.form_submit_button("Отправить", type="primary")
         if submitted and user_input.strip():
-            new_msg = {
+            # ✅ СРАЗУ добавляем ваше сообщение
+            st.session_state.chats[chat_id].append({
                 "role": "user",
                 "content": user_input.strip(),
                 "timestamp": time.time(),
                 "read": False,
                 "id": f"msg_{int(time.time()*1000)}"
-            }
-            st.session_state.chats[chat_id].append(new_msg)
-            st.session_state.events.append({"type": "chat", "to": chat_id, "content": user_input.strip(), "timestamp": time.time()})
-            
-            # Оценка сообщения
-            triggers = evaluator.evaluate_chat_message(user_input.strip(), to=chat_id)
-            for t in triggers:
-                for trig in TRIGGERS["mvp_triggers"]:
-                    if trig["id"] == t["id"]:
-                        st.session_state.scores[trig["block"]] += t["points"]
-                        break
-            
-            try:
-                from characters import CHARACTERS_RESPONSES
-                response = CHARACTERS_RESPONSES[chat_id]['get_response'](user_input.strip())
-                sender_names = {
-                    "dba_team": "Михаил Шилин",
-                    "partner_a": "Анна Новикова",
-                    "partner_b": "Дмитрий Семенов",
-                }
-                st.session_state.chats[chat_id].append({
-                    "role": "bot",
-                    "content": response,
-                    "timestamp": time.time(),
-                    "read": True,
-                    "sender_name": sender_names.get(chat_id, display_names[chat_id]),
-                    "id": f"msg_{int(time.time()*1000)}"
-                })
-            except Exception as e:
-                st.session_state.chats[chat_id].append({
-                    "role": "bot",
-                    "content": f"❌ Ошибка: {str(e)}",
-                    "sender_name": "Система",
-                    "read": True
-                })
-            st.rerun()
+            })
+            # Ставим pending
+            st.session_state[f'pending_response_{chat_id}'] = user_input.strip()
+            st.rerun()  # → ваше сообщение видно сразу!
+
+    # Обрабатываем pending ответ (вне формы!)
+    process_ai_response(chat_id)
 
 def task_report_form():
     st.subheader("📝 Новый отчёт по задаче")
@@ -420,10 +460,8 @@ def task_report_form():
             }
             st.session_state.task_reports.append(new_report)
             st.session_state.events.append({"type": "report", "data": new_report, "timestamp": time.time()})
-            
             report_score = evaluator.evaluate_task_report(description, action, result)
             st.session_state.scores["process_documentation"] += report_score["score"]
-            
             st.success("Отчёт сохранён!")
             st.rerun()
         else:
@@ -480,7 +518,6 @@ def sql_sandbox():
                         "timestamp": time.time()
                     })
                     st.session_state.sql_history = st.session_state.sql_history[-10:]
-                    
                     st.session_state.events.append({"type": "sql", "query": sql_query, "timestamp": time.time()})
                     triggers = evaluator.evaluate_sql_query(sql_query)
                     for t in triggers:
