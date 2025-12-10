@@ -60,7 +60,18 @@ def generate_report(events, triggers_config):
             scores[result["block"]] += result["score"]
             for fb in result["feedback"]:
                 feedback[result["block"]].append(fb)
-
+    
+    # Применяем веса
+    if weights:
+        final_score = (
+            scores["soft_skills"] * weights["soft_skills"] +
+            scores["hard_skills"] * weights["hard_skills"] +
+            scores["data_integrity"] * weights["data_integrity"] +
+            scores["process_documentation"] * weights["process_documentation"]
+        ) / 100
+    else:
+        final_score = sum(scores.values()) / 4
+    
     # Формируем структуру отчёта
     blocks = {
         "soft_skills": {
