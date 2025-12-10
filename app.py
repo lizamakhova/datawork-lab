@@ -122,12 +122,19 @@ st.markdown("""
 def initialize_session():
     if 'initialized' not in st.session_state:
         st.session_state.initialized = True
-        st.session_state.user_profile = {
-            "name": "Алексей", 
-            "nickname": "alex_data",
-            "avatar": "🧑‍💻",
-            "role": "candidate"
+        st.session_state.user_profiles = {
+            "alex_data": {
+                "name": "Алексей",
+                "avatar": "🧑‍💻",
+                "role": "candidate"
+            },
+            "reviewer": {
+                "name": "Ревьюер",
+                "avatar": "👨‍🏫",
+                "role": "reviewer"
+            }
         }
+        st.session_state.active_profile = "alex_data"
         CHAT_KEYS = ["alice", "maxim", "kirill", "dba_team", "partner_a", "partner_b"]
         st.session_state.chats = {key: [] for key in CHAT_KEYS}
         st.session_state.active_chat = "alice"
@@ -163,49 +170,48 @@ def render_sidebar():
         st.title("🔍 DataWork Lab")
         
         # 👤 Профиль
-        st.markdown(f"""
-        <div style='text-align: center; margin: 1rem 0; padding: 1rem; border-radius: 12px; background: #f8f9fa;'>
-            <div style='font-size: 36px;'>{st.session_state.user_profile['avatar']}</div>
-            <div><strong>{st.session_state.user_profile['name']}</strong></div>
-            <div style='color: #666;'>@{st.session_state.user_profile['nickname']}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown("### 👤 Профиль")
+        for profile_id, profile in st.session_state.user_profiles.items():
+            if st.button(f"{profile['avatar']} @{profile_id}", key=f"profile_{profile_id}", use_container_width=True):
+                st.session_state.active_profile = profile_id
+                st.rerun()
         
-        # 📌 Чаты
-        st.markdown("### 💬 Чаты")
-        chat_labels = {
-            "alice": "👩‍💼 Алиса Петрова",
-            "maxim": "👨‍💼 Максим Волков",
-            "kirill": "👨 Кирилл Смирнов",
-            "dba_team": "🛠️ #dba-team",
-            "partner_a": "🤝 #partner_a_operations_chat",
-            "partner_b": "🤝 #partner_b_operations_chat",
-        }
-        for chat_id, label in chat_labels.items():
-            unread = sum(1 for m in st.session_state.chats[chat_id] 
-                         if m['role'] == 'bot' and not m.get('read', False))
-            badge = f" <span style='background:#e33;color:white;padding:1px 6px;border-radius:10px;font-size:10px;'>{unread}</span>" if unread else ""
-            if st.button(f"{label}{badge}", key=f"nav_{chat_id}", use_container_width=True):
-                st.session_state.active_chat = chat_id
-                st.session_state.active_tab = "chats"
+        current = st.session_state.user_profiles[st.session_state.active_profile]
+        st.markdown(f"**{current['name']}** ({current['role']})")
         
-        # 📁 Инструменты
+        # 📁 Инструменты — фильтруем по роли
         st.markdown("### 📁 Рабочие инструменты")
-        if st.button("🔧 SQL Песочница", key="tab_sql", use_container_width=True):
-            st.session_state.active_tab = "sql"
-        if st.button("📚 База знаний", key="tab_kb", use_container_width=True):
-            st.session_state.active_tab = "kb"
-        if st.button("📝 Отчёт по задачам", key="tab_report", use_container_width=True):
-            st.session_state.active_tab = "report"
-        if st.button("📊 Показать отчёт", key="show_report", use_container_width=True, type="primary"):
-            st.session_state.active_tab = "report_result"
+        role = current["role"]
         
-        # 👨‍🏫 Ревьюер
-        st.markdown("### 👨‍🏫 Ревьюер")
-        if st.button("Настроить оценку", key="tab_reviewer", use_container_width=True):
-            st.session_state.active_tab = "reviewer"
+        if role == "candidate":
+            if st.button("🔧 SQL Песочница", key="tab_sql", use_container_width=True):
+                st.session_state.active_tab = "sql"
+            if st.button("📚 База знаний", key="tab_kb", use_container_width=True):
+                st.session_state.active_tab = "kb"
+            if st.button("📝 Отчёт по задачам", key="tab_report", use_container_width=True):
+                st.session_state.active_tab = "report"
+            if st.button("📊 Показать отчёт", key="show_report", use_container_width=True, type="primary"):
+                st.session_state.active_tab = "report_result"
         
-        # 🎯 Сценарии
+        else:  # reviewer
+            if st.button("🔧 SQL Песочница", key="tab_sql", use_container_width=True):
+                st.session_state.active_tab = "sql"
+            if st.button("📚 База знаний", key="tab_kb", use_container_width=True):
+                st.session_state.active_tab = "kb"
+            if st.button("📝 Отчёт по задачам", key="tab_report", use_container_width=True):
+                st.session_state.active_tab = "report"
+            if st.button("📊 Показать отчёт", key="show_report", use_container_width=True, type="primary"):
+                st.session_state.active_tab = "report_result"
+            if st.button("🧪 Сценарии", key="tab_scenarios", use_container_width=True):
+                st.session_state.active_tab = "scenarios"
+            if st.button("⚖️ Настроить оценку", key="tab_reviewer", use_container_width=True):
+                st.session_state.active_tab = "reviewer"
+            if st.button("📈 Отчёты по кандидатам", key="tab_reports_overview", use_container_width=True):
+                st.session_state.active_tab = "reports_overview"
+            if st.button("🕒 История выполненного", key="tab_history", use_container_width=True):
+                st.session_state.active_tab = "history"
+        
+        # 🎯 Сценарии — доступны всем
         st.markdown("### 🎯 Обучение")
         if st.button("▶️ Запустить сценарий", key="start_scenario", use_container_width=True):
             st.session_state.active_scenario = "revenue_mismatch"
@@ -673,6 +679,171 @@ def report_result():
             st.info(rec)
 
 # ==========================================
+# ✅ НОВОЕ: История выполненного (Вариант C)
+# ==========================================
+def history_overview():
+    st.subheader("🕒 История выполненного")
+    
+    if not st.session_state.events:
+        st.info("История пуста. Запустите сценарий.")
+        return
+    
+    # === 1. Собираем данные ===
+    rows = []
+    for event in st.session_state.events:
+        profile = st.session_state.user_profiles[st.session_state.active_profile]
+        scenario = st.session_state.active_scenario or "—"
+        ts = time.strftime("%H:%M:%S", time.localtime(event["timestamp"]))
+        hour = int(time.strftime("%H", time.localtime(event["timestamp"])))
+        
+        if event["type"] == "chat":
+            content = event["content"][:100] + ("..." if len(event["content"]) > 100 else "")
+            event_str = f"💬 {content}"
+            if "срок" in event["content"].lower() or "дедлайн" in event["content"].lower():
+                trigger, points = "clarify_deadline", 10
+            elif "спасибо" in event["content"].lower() or "пожалуйста" in event["content"].lower():
+                trigger, points = "polite_language", 1
+            else:
+                trigger, points = "—", 0
+            context = "—"
+        elif event["type"] == "sql":
+            query = event["query"][:100] + ("..." if len(event["query"]) > 100 else "")
+            event_str = f"🔍 `{query}`"
+            if "registry_statuses" in event["query"] and "is_excluded" not in event["query"]:
+                trigger, points = "missing_is_excluded", -20
+            elif "CREATE TABLE" in event["query"] and "backup" in event["query"].lower():
+                trigger, points = "create_backup_table", 10
+            else:
+                trigger, points = "—", 0
+            context = "REG002" if "REG002" in event["query"] else "—"
+        elif event["type"] == "report":
+            event_str = "📝 Отчёт по задаче"
+            trigger, points = "task_report_filled", 12
+            context = "—"
+        else:
+            event_str, trigger, points, context = str(event), "—", 0, "—"
+        
+        rows.append({
+            "Кандидат": profile["nickname"],
+            "Сценарий": scenario,
+            "Событие": event_str,
+            "Время": ts,
+            "Час": hour,
+            "Триггер": trigger,
+            "Баллы": points,
+            "Контекст": context,
+            "Тип": "positive" if points > 0 else "negative" if points < 0 else "neutral"
+        })
+    
+    df = pd.DataFrame(rows)
+    
+    # === 2. Фильтры слева (в 2 колонки) ===
+    col_filter, col_main = st.columns([1, 3])
+    
+    with col_filter:
+        st.markdown("#### 🔍 Фильтры")
+        
+        candidates = ["Все"] + sorted(df["Кандидат"].unique().tolist())
+        selected_candidate = st.selectbox("Кандидат", candidates, key="filter_candidate")
+        
+        scenarios = ["Все"] + sorted(df["Сценарий"].unique().tolist())
+        selected_scenario = st.selectbox("Сценарий", scenarios, key="filter_scenario")
+        
+        triggers = ["Все"] + sorted([t for t in df["Триггер"].unique() if t != "—"])
+        selected_triggers = st.multiselect("Триггеры", triggers, default=["Все"], key="filter_triggers")
+        
+        min_hour, max_hour = st.slider(
+            "Время суток",
+            0, 23, (8, 20),
+            format="%d:00"
+        )
+        
+        # Применяем фильтры
+        filtered_df = df.copy()
+        if selected_candidate != "Все":
+            filtered_df = filtered_df[filtered_df["Кандидат"] == selected_candidate]
+        if selected_scenario != "Все":
+            filtered_df = filtered_df[filtered_df["Сценарий"] == selected_scenario]
+        if "Все" not in selected_triggers:
+            filtered_df = filtered_df[filtered_df["Триггер"].isin(selected_triggers)]
+        filtered_df = filtered_df[(filtered_df["Час"] >= min_hour) & (filtered_df["Час"] <= max_hour)]
+    
+    with col_main:
+        # === 3. Агрегаты сверху ===
+        st.markdown("#### 📊 Сводка")
+        col1, col2, col3, col4 = st.columns(4)
+        
+        total_events = len(filtered_df)
+        avg_score = filtered_df["Баллы"].mean() if total_events else 0
+        top_trigger = filtered_df["Триггер"].value_counts().index[0] if total_events else "—"
+        total_time = f"{filtered_df['Час'].max() - filtered_df['Час'].min() + 1}ч" if total_events else "—"
+        
+        col1.metric("Событий", total_events)
+        col2.metric("Средний балл", f"{avg_score:+.1f}")
+        col3.metric("Топ-триггер", top_trigger)
+        col4.metric("Длительность", total_time)
+        
+        # === 4. Таблица / Лента ===
+        view_mode = st.radio("Просмотр", ["Таблица", "Лента"], horizontal=True, key="view_mode")
+        
+        if view_mode == "Таблица":
+            st.dataframe(filtered_df[["Кандидат", "Сценарий", "Событие", "Время", "Триггер", "Баллы", "Контекст"]], 
+                        use_container_width=True, height=400)
+        else:
+            st.markdown("#### 📜 Хронология")
+            for _, row in filtered_df.iterrows():
+                color = "#2AB27B" if row["Баллы"] > 0 else "#E33" if row["Баллы"] < 0 else "#888"
+                icon = "✅" if row["Баллы"] > 0 else "❌" if row["Баллы"] < 0 else "—"
+                st.markdown(f"""
+                <div style="padding: 0.5rem; border-left: 3px solid {color}; margin: 0.5rem 0; font-size: 0.95rem;">
+                    <small>{row['Время']} · {row['Кандидат']} · {row['Сценарий']}</small><br>
+                    <strong>{row['Событие']}</strong><br>
+                    <span style="color:{color}">{icon} {row['Триггер']} ({row['Баллы']})</span>
+                    {" · " + row["Контекст"] if row["Контекст"] != "—" else ""}
+                </div>
+                """, unsafe_allow_html=True)
+        
+        # === 5. График внизу ===
+        st.markdown("#### 📈 Распределение по времени")
+        if not filtered_df.empty:
+            # Агрегируем по часам и типу
+            chart_data = filtered_df.groupby(["Час", "Тип"]).size().reset_index(name="count")
+            fig = go.Figure()
+            
+            for t in ["positive", "negative", "neutral"]:
+                subset = chart_data[chart_data["Тип"] == t]
+                fig.add_trace(go.Bar(
+                    x=subset["Час"],
+                    y=subset["count"],
+                    name={"positive": "✅ Позитив", "negative": "❌ Негатив", "neutral": "— Нейтрально"}[t],
+                    marker_color={"positive": "#2AB27B", "negative": "#E33", "neutral": "#888"}[t]
+                ))
+            
+            fig.update_layout(barmode='stack', xaxis_title="Час", yaxis_title="Кол-во событий")
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # === 6. Экспорт (внизу) ===
+        if not filtered_df.empty:
+            csv = filtered_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                "📥 Скачать CSV",
+                data=csv,
+                file_name="datawork_history.csv",
+                mime="text/csv"
+            )
+
+# ==========================================
+# UI: stub-вкладки
+# ==========================================
+def scenario_manager():
+    st.subheader("🧪 Управление сценариями")
+    st.info("Скоро: редактирование сценариев через UI")
+
+def reports_overview():
+    st.subheader("📈 Отчёты по кандидатам")
+    st.info("Скоро: сравнение кандидатов, экспорт PDF")
+
+# ==========================================
 # Main
 # ==========================================
 def main():
@@ -680,6 +851,8 @@ def main():
     initialize_session()
     render_sidebar()
     scenario_engine()
+    
+    current_role = st.session_state.user_profiles[st.session_state.active_profile]["role"]
     
     if st.session_state.active_tab == "chats":
         display_chat(st.session_state.active_chat)
@@ -700,6 +873,12 @@ def main():
         report_result()
     elif st.session_state.active_tab == "reviewer":
         reviewer_mode()
+    elif st.session_state.active_tab == "scenarios":
+        scenario_manager()
+    elif st.session_state.active_tab == "reports_overview":
+        reports_overview()
+    elif st.session_state.active_tab == "history":
+        history_overview()
 
 if __name__ == "__main__":
     main()
