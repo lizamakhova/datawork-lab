@@ -24,13 +24,24 @@ def validate_sql_query(sql_query):
     from sql_validator import validate_sql_query as _validate
     return _validate(sql_query)
 
-# Load triggers
+# Load configs
 try:
     with open("triggers.json", "r", encoding="utf-8") as f:
         TRIGGERS = json.load(f)
 except Exception as e:
     st.warning(f"⚠️ Не найден triggers.json: {e}")
     TRIGGERS = {"mvp_triggers": []}
+
+try:
+    with open("role_weights.json", "r", encoding="utf-8") as f:
+        ROLE_WEIGHTS = json.load(f)
+except Exception as e:
+    st.warning(f"⚠️ Не найден role_weights.json: {e}")
+    ROLE_WEIGHTS = {
+        "role_weights": {
+            "analyst": {"soft_skills": 20, "hard_skills": 30, "data_integrity": 40, "process_documentation": 10}
+        }
+    }
 
 from text_evaluator import TextEvaluator
 evaluator = TextEvaluator()
@@ -136,9 +147,15 @@ def initialize_session():
             "process_documentation": 0
         }
         st.session_state.events = []
+        st.session_state.custom_weights = None
+        st.session_state.reviewer_role = "analyst"
+        st.session_state.w_soft = 20
+        st.session_state.w_hard = 30
+        st.session_state.w_integrity = 40
+        st.session_state.w_doc = 10
 
 # ==========================================
-# UI
+# UI: sidebar
 # ==========================================
 def render_sidebar():
     with st.sidebar:
@@ -154,7 +171,7 @@ def render_sidebar():
         </div>
         """, unsafe_allow_html=True)
         
-        # 📌 Чаты — ДИНАМИЧЕСКИЙ СЧЁТЧИК
+        # 📌 Чаты
         st.markdown("### 💬 Чаты")
         chat_labels = {
             "alice": "👩‍💼 Алиса Петрова",
@@ -167,7 +184,7 @@ def render_sidebar():
         for chat_id, label in chat_labels.items():
             unread = sum(1 for m in st.session_state.chats[chat_id] 
                          if m['role'] == 'bot' and not m.get('read', False))
-            badge = f" ({unread})" if unread > 0 else ""
+            badge = f" <span style='background:#e33;color:white;padding:1px 6px;border-radius:10px;font-size:10px;'>{unread}</span>" if unread else ""
             if st.button(f"{label}{badge}", key=f"nav_{chat_id}", use_container_width=True):
                 st.session_state.active_chat = chat_id
                 st.session_state.active_tab = "chats"
@@ -183,6 +200,11 @@ def render_sidebar():
         if st.button("📊 Показать отчёт", key="show_report", use_container_width=True, type="primary"):
             st.session_state.active_tab = "report_result"
         
+        # 👨‍🏫 Ревьюер
+        st.markdown("### 👨‍🏫 Ревьюер")
+        if st.button("Настроить оценку", key="tab_reviewer", use_container_width=True):
+            st.session_state.active_tab = "reviewer"
+        
         # 🎯 Сценарии
         st.markdown("### 🎯 Обучение")
         if st.button("▶️ Запустить сценарий", key="start_scenario", use_container_width=True):
@@ -194,6 +216,9 @@ def render_sidebar():
             st.session_state.clear()
             st.rerun()
 
+# ==========================================
+# UI: профили
+# ==========================================
 def display_profile(chat_id):
     profiles = {
         "alice": {
@@ -264,6 +289,9 @@ def display_profile(chat_id):
         </div>
         """, unsafe_allow_html=True)
 
+# ==========================================
+# UI: сообщения
+# ==========================================
 def render_message(msg, is_typing=False):
     from_user = msg['role'] == 'user'
     sender_name = "Вы" if from_user else msg.get('sender_name', 'Система')
@@ -295,77 +323,10 @@ def render_message(msg, is_typing=False):
     </div>
     """, unsafe_allow_html=True)
 
-def process_ai_response(chat_id):
-    """Обработка ответа с анимацией: прочитано → печатает → ответ"""
-    pending_key = f'pending_response_{chat_id}'
-    if pending_key not in st.session_state or not st.session_state[pending_key]:
-        return
-    
-    user_msg = st.session_state[pending_key]
-    
-    # Задержки по персонажу
-    delays = {
-        "alice": 1.5,
-        "maxim": 3.0,
-        "kirill": 2.0,
-        "dba_team": 2.5,
-        "partner_a": 3.0,
-        "partner_b": 3.0
-    }
-    delay = delays.get(chat_id, 2.0)
-    
-    # 1. Имитация "прочитано" (через delay - 0.8 сек)
-    time.sleep(delay - 0.8)
-    if st.session_state.chats[chat_id] and st.session_state.chats[chat_id][-1]['role'] == 'user':
-        st.session_state.chats[chat_id][-1]["read"] = True
-    st.rerun()  # → появился ✔️ и "печатает…"
-    
-    # 2. Имитация "печатает…" (0.8 сек)
-    time.sleep(0.8)
-    
-    # 3. Генерация ответа
-    try:
-        from characters import CHARACTERS_RESPONSES
-        response = CHARACTERS_RESPONSES[chat_id]['get_response'](user_msg)
-        sender_names = {
-            "dba_team": "Михаил Шилин",
-            "partner_a": "Анна Новикова",
-            "partner_b": "Дмитрий Семенов",
-        }
-        display_names = {
-            "alice": "Алиса Петрова",
-            "maxim": "Максим Волков",
-            "kirill": "Кирилл Смирнов",
-            "dba_team": "#dba-team",
-            "partner_a": "#partner_a_operations_chat",
-            "partner_b": "#partner_b_operations_chat",
-        }
-        st.session_state.chats[chat_id].append({
-            "role": "bot",
-            "content": response,
-            "timestamp": time.time(),
-            "read": True,
-            "sender_name": sender_names.get(chat_id, display_names[chat_id]),
-            "id": f"msg_{int(time.time()*1000)}"
-        })
-    except Exception as e:
-        st.session_state.chats[chat_id].append({
-            "role": "bot",
-            "content": f"❌ Ошибка: {str(e)}",
-            "sender_name": "Система",
-            "read": True
-        })
-    
-    # Очистка pending
-    st.session_state[pending_key] = None
-    st.rerun()
-
+# ==========================================
+# UI: чат
+# ==========================================
 def display_chat(chat_id):
-    # Автоматически помечаем все сообщения чата как прочитанные при открытии
-    for msg in st.session_state.chats[chat_id]:
-        if msg['role'] == 'bot' and not msg.get('read', False):
-            msg['read'] = True
-    
     display_names = {
         "alice": "Алиса Петрова",
         "maxim": "Максим Волков",
@@ -386,34 +347,69 @@ def display_chat(chat_id):
         gc = GROUP_CHATS[chat_id]
         st.caption(f"{gc['description']} • {gc['members']}")
     
-    # Отображаем историю
     for msg in st.session_state.chats[chat_id]:
         render_message(msg, is_typing=False)
     
-    # Индикатор "печатает…", если есть pending
-    if f'pending_response_{chat_id}' in st.session_state and st.session_state[f'pending_response_{chat_id}']:
+    if st.session_state.chats[chat_id] and st.session_state.chats[chat_id][-1]['role'] == 'user' and not st.session_state.chats[chat_id][-1].get('read', False):
         render_message({"role": "bot", "content": "", "sender_name": display_names[chat_id]}, is_typing=True)
     
-    # Форма отправки — ОДИН РАЗ
     with st.form(key=f'chat_form_{chat_id}', clear_on_submit=True):
         user_input = st.text_input("Сообщение:", key=f"input_{chat_id}", placeholder="Напишите сообщение...")
         submitted = st.form_submit_button("Отправить", type="primary")
         if submitted and user_input.strip():
-            # ✅ СРАЗУ добавляем ваше сообщение
-            st.session_state.chats[chat_id].append({
+            new_msg = {
                 "role": "user",
                 "content": user_input.strip(),
                 "timestamp": time.time(),
                 "read": False,
                 "id": f"msg_{int(time.time()*1000)}"
-            })
-            # Ставим pending
-            st.session_state[f'pending_response_{chat_id}'] = user_input.strip()
-            st.rerun()  # → ваше сообщение видно сразу!
+            }
+            st.session_state.chats[chat_id].append(new_msg)
+            st.session_state.events.append({"type": "chat", "to": chat_id, "content": user_input.strip(), "timestamp": time.time()})
+            
+            # Оценка сообщения
+            triggers = evaluator.evaluate_chat_message(user_input.strip(), to=chat_id)
+            for t in triggers:
+                for trig in TRIGGERS["mvp_triggers"]:
+                    if trig["id"] == t["id"]:
+                        st.session_state.scores[trig["block"]] = max(0, st.session_state.scores[trig["block"]] + t["points"])
+                        break
+            
+            try:
+                from characters import get_ai_response
+                delays = {"alice": 1.5, "maxim": 3, "kirill": 2, "dba_team": 2, "partner_a": 2.5, "partner_b": 2.5}
+                delay = delays.get(chat_id, 2)
+                time.sleep(delay - 0.8)
+                if st.session_state.chats[chat_id]:
+                    st.session_state.chats[chat_id][-1]["read"] = True
+                st.rerun()
+                time.sleep(0.8)
+                response = get_ai_response(chat_id, user_input.strip())
+                sender_names = {
+                    "dba_team": "Михаил Шилин",
+                    "partner_a": "Анна Новикова",
+                    "partner_b": "Дмитрий Семенов",
+                }
+                st.session_state.chats[chat_id].append({
+                    "role": "bot",
+                    "content": response,
+                    "timestamp": time.time(),
+                    "read": True,
+                    "sender_name": sender_names.get(chat_id, display_names[chat_id]),
+                    "id": f"msg_{int(time.time()*1000)}"
+                })
+            except Exception as e:
+                st.session_state.chats[chat_id].append({
+                    "role": "bot",
+                    "content": f"❌ Ошибка: {str(e)}",
+                    "sender_name": "Система",
+                    "read": True
+                })
+            st.rerun()
 
-    # Обрабатываем pending ответ (вне формы!)
-    process_ai_response(chat_id)
-
+# ==========================================
+# UI: отчёт по задаче
+# ==========================================
 def task_report_form():
     st.subheader("📝 Новый отчёт по задаче")
     st.caption("Документируйте шаги для аудита и передачи контекста. Подробнее — в базе знаний.")
@@ -460,13 +456,19 @@ def task_report_form():
             }
             st.session_state.task_reports.append(new_report)
             st.session_state.events.append({"type": "report", "data": new_report, "timestamp": time.time()})
+            
+            # Оценка отчёта
             report_score = evaluator.evaluate_task_report(description, action, result)
-            st.session_state.scores["process_documentation"] += report_score["score"]
+            st.session_state.scores["process_documentation"] = max(0, min(12, st.session_state.scores["process_documentation"] + report_score["score"]))
+            
             st.success("Отчёт сохранён!")
             st.rerun()
         else:
             st.warning("Заполните все поля.")
 
+# ==========================================
+# UI: схема БД
+# ==========================================
 def show_database_schema():
     st.markdown("#### 🗃️ Схема базы данных")
     DATABASE_SCHEMA = get_database_schema()
@@ -493,6 +495,9 @@ def show_database_schema():
                 c2.markdown("")
             c3.write(col_info['description'])
 
+# ==========================================
+# UI: SQL песочница
+# ==========================================
 def sql_sandbox():
     st.subheader("🔧 SQL Песочница")
     tab1, tab2 = st.tabs(["📝 SQL Запрос", "🗃️ Схема БД"])
@@ -518,12 +523,14 @@ def sql_sandbox():
                         "timestamp": time.time()
                     })
                     st.session_state.sql_history = st.session_state.sql_history[-10:]
+                    
+                    # Лог событий + оценка
                     st.session_state.events.append({"type": "sql", "query": sql_query, "timestamp": time.time()})
                     triggers = evaluator.evaluate_sql_query(sql_query)
                     for t in triggers:
                         for trig in TRIGGERS["mvp_triggers"]:
                             if trig["id"] == t["id"]:
-                                st.session_state.scores[trig["block"]] += t["points"]
+                                st.session_state.scores[trig["block"]] = max(0, st.session_state.scores[trig["block"]] + t["points"])
                                 break
         
         if st.session_state.sql_last_result is not None:
@@ -544,6 +551,9 @@ def sql_sandbox():
     with tab2:
         show_database_schema()
 
+# ==========================================
+# UI: база знаний
+# ==========================================
 def knowledge_base():
     st.subheader("📚 База знаний")
     KNOWLEDGE_BASE = get_knowledge_base()
@@ -553,11 +563,12 @@ def knowledge_base():
             st.session_state.kb_expanded[key] = True
             st.markdown(article['content'])
 
+# ==========================================
+# UI: сценарий (заготовка)
+# ==========================================
 def scenario_engine():
     if st.session_state.active_scenario and st.session_state.scenario_start_time:
         elapsed = time.time() - st.session_state.scenario_start_time
-        
-        # Максим — через 2 сек
         if elapsed > 2 and not st.session_state.get('scenario_step_1'):
             st.session_state.chats["maxim"].append({
                 "role": "bot",
@@ -569,20 +580,49 @@ def scenario_engine():
             })
             st.session_state.scenario_step_1 = True
             st.rerun()
-        
-        # ✅ Кирилл — через 30 сек (конфликт дедлайнов)
-        if elapsed > 30 and not st.session_state.get('scenario_step_kirill'):
-            st.session_state.chats["kirill"].append({
-                "role": "bot",
-                "content": "У меня тут тоже горит! Проверь статусы в реестре Партнёра А — они не совпадают с нашими данными. К 11:00!",
-                "timestamp": time.time(),
-                "read": False,
-                "sender_name": "Кирилл Смирнов",
-                "id": f"auto_kirill_{int(time.time() * 1000)}"
-            })
-            st.session_state.scenario_step_kirill = True
-            st.rerun()
 
+# ==========================================
+# UI: режим ревьюера
+# ==========================================
+def reviewer_mode():
+    st.subheader("👨‍🏫 Режим ревьюера")
+    
+    role = st.selectbox(
+        "Роль кандидата",
+        ["analyst", "dba", "product_analyst"],
+        index=["analyst", "dba", "product_analyst"].index(st.session_state.reviewer_role)
+    )
+    st.session_state.reviewer_role = role
+    
+    base = ROLE_WEIGHTS["role_weights"][role]
+    
+    soft = st.slider("Soft Skills", 0, 100, st.session_state.get("w_soft", base["soft_skills"]))
+    hard = st.slider("Hard Skills", 0, 100, st.session_state.get("w_hard", base["hard_skills"]))
+    integrity = st.slider("Data Integrity", 0, 100, st.session_state.get("w_integrity", base["data_integrity"]))
+    doc = st.slider("Документация", 0, 100, st.session_state.get("w_doc", base["process_documentation"]))
+    
+    total = soft + hard + integrity + doc
+    if total != 100:
+        st.warning(f"⚠️ Сумма весов: {total}%. Приведите к 100%.")
+    else:
+        st.success("✅ Веса корректны")
+    
+    if st.button("💾 Применить", type="primary"):
+        st.session_state.custom_weights = {
+            "soft_skills": soft,
+            "hard_skills": hard,
+            "data_integrity": integrity,
+            "process_documentation": doc
+        }
+        st.session_state.w_soft = soft
+        st.session_state.w_hard = hard
+        st.session_state.w_integrity = integrity
+        st.session_state.w_doc = doc
+        st.success("Конфигурация применена. Теперь отчёты будут использовать эти веса.")
+
+# ==========================================
+# UI: отчёт
+# ==========================================
 def report_result():
     st.subheader("🏆 Ваш отчёт по компетенциям")
     
@@ -593,26 +633,32 @@ def report_result():
         "process_documentation": {"name": "Документация", "score": st.session_state.scores["process_documentation"], "max": 12}
     }
     
+    weights = st.session_state.custom_weights or ROLE_WEIGHTS["role_weights"][st.session_state.reviewer_role]
+    
+    weighted_score = (
+        blocks["soft_skills"]["score"] * weights["soft_skills"] +
+        blocks["hard_skills"]["score"] * weights["hard_skills"] +
+        blocks["data_integrity"]["score"] * weights["data_integrity"] +
+        blocks["process_documentation"]["score"] * weights["process_documentation"]
+    ) / 100
+
+    st.metric("Итоговый балл", f"{weighted_score:.1f} / 100")
+    
     for k, v in blocks.items():
         st.markdown(f"### {v['name']}")
         st.progress(min(v["score"] / v["max"], 1.0))
-        st.write(f"**{v['score']} / {v['max']}**")
-        if k == "process_documentation" and v["score"] < 12:
-            st.caption("🔹 Заполните все 3 пункта отчёта для максимума")
+        st.write(f"{v['score']} / {v['max']}")
         st.markdown("---")
     
+    # Радар
     fig = go.Figure(data=go.Scatterpolar(
         r=[min(v["score"], v["max"]) for v in blocks.values()],
         theta=[v["name"] for v in blocks.values()],
-        fill='toself',
-        name='Ваш профиль'
+        fill='toself'
     ))
-    fig.update_layout(
-        polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
-        showlegend=False
-    )
     st.plotly_chart(fig, use_container_width=True)
     
+    # Рекомендации
     recommendations = []
     if blocks["soft_skills"]["score"] < 70:
         recommendations.append("🔹 Практикуйте уточнение сроков и приоритетов перед началом задачи")
@@ -652,6 +698,8 @@ def main():
                     st.markdown(f"**3. Фактический результат**\n\n{rep['result']}")
     elif st.session_state.active_tab == "report_result":
         report_result()
+    elif st.session_state.active_tab == "reviewer":
+        reviewer_mode()
 
 if __name__ == "__main__":
     main()
