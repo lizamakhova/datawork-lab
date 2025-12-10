@@ -1,0 +1,22 @@
+{
+  "role_weights": {
+    "analyst": {
+      "soft_skills": 20,
+      "hard_skills": 30,
+      "data_integrity": 40,
+      "process_documentation": 10
+    },
+    "dba": {
+      "soft_skills": 10,
+      "hard_skills": 50,
+      "data_integrity": 20,
+      "process_documentation": 20
+    },
+    "product_analyst": {
+      "soft_skills": 30,
+      "hard_skills": 20,
+      "data_integrity": 30,
+      "process_documentation": 20
+    }
+  }
+}
