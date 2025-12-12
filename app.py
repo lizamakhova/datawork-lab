@@ -124,14 +124,20 @@ def initialize_session():
         st.session_state.initialized = True
         st.session_state.user_profiles = {
             "alex_data": {
-                "name": "Алексей",
+                "name": "Алексей Иванов",
+                "first_name": "Алексей",
+                "last_name": "Иванов",
                 "avatar": "🧑‍💻",
-                "role": "candidate"
+                "role": "candidate",
+                "email": "alex.data@example.com"
             },
             "reviewer": {
-                "name": "Ревьюер",
+                "name": "Ревьюер Системы",
+                "first_name": "Ревьюер",
+                "last_name": "Системы",
                 "avatar": "👨‍🏫",
-                "role": "reviewer"
+                "role": "reviewer",
+                "email": "reviewer@dataworklab.com"
             }
         }
         st.session_state.active_profile = "alex_data"
@@ -176,8 +182,14 @@ def render_sidebar():
                 st.session_state.active_profile = profile_id
                 st.rerun()
         
+        # 🟢 Модалка профиля
         current = st.session_state.user_profiles[st.session_state.active_profile]
-        st.markdown(f"**{current['name']}** ({current['role']})")
+        with st.expander(f"👤 {current['name']} ({current['role']})", expanded=True):
+            st.markdown(f"**Имя:** {current['first_name']}")
+            st.markdown(f"**Фамилия:** {current['last_name']}")
+            st.markdown(f"**Роль:** {current['role']}")
+            st.markdown(f"**Email:** {current['email']}")
+            st.markdown(f"**Аватар:** {current['avatar']}")
         
         # 📁 Инструменты — фильтруем по роли
         st.markdown("### 📁 Рабочие инструменты")
@@ -192,16 +204,26 @@ def render_sidebar():
                 st.session_state.active_tab = "report"
             if st.button("📊 Показать отчёт", key="show_report", use_container_width=True, type="primary"):
                 st.session_state.active_tab = "report_result"
+            
+            # 💬 Чаты — только для кандидата
+            st.markdown("### 💬 Чаты")
+            chat_labels = {
+                "alice": "👩‍💼 Алиса Петрова",
+                "maxim": "👨‍💼 Максим Волков",
+                "kirill": "👨 Кирилл Смирнов",
+                "dba_team": "🛠️ #dba-team",
+                "partner_a": "🤝 #partner_a_operations_chat",
+                "partner_b": "🤝 #partner_b_operations_chat",
+            }
+            for chat_id, label in chat_labels.items():
+                unread = sum(1 for m in st.session_state.chats[chat_id] 
+                             if m['role'] == 'bot' and not m.get('read', False))
+                badge = f" <span style='background:#e33;color:white;padding:1px 6px;border-radius:10px;font-size:10px;'>{unread}</span>" if unread else ""
+                if st.button(f"{label}{badge}", key=f"nav_{chat_id}", use_container_width=True):
+                    st.session_state.active_chat = chat_id
+                    st.session_state.active_tab = "chats"
         
-        else:  # reviewer
-            if st.button("🔧 SQL Песочница", key="tab_sql", use_container_width=True):
-                st.session_state.active_tab = "sql"
-            if st.button("📚 База знаний", key="tab_kb", use_container_width=True):
-                st.session_state.active_tab = "kb"
-            if st.button("📝 Отчёт по задачам", key="tab_report", use_container_width=True):
-                st.session_state.active_tab = "report"
-            if st.button("📊 Показать отчёт", key="show_report", use_container_width=True, type="primary"):
-                st.session_state.active_tab = "report_result"
+        else:  # reviewer — только 4 вкладки
             if st.button("🧪 Сценарии", key="tab_scenarios", use_container_width=True):
                 st.session_state.active_tab = "scenarios"
             if st.button("⚖️ Настроить оценку", key="tab_reviewer", use_container_width=True):
@@ -232,14 +254,14 @@ def display_profile(chat_id):
             "photo": "👩‍💼",
             "status": "🟢 Онлайн",
             "role": "Руководитель аналитики",
-            "department": "Отдел аналитики",
+            "department": "Отдел аналитики", 
             "work_hours": "9:00-18:00 МСК"
         },
         "maxim": {
             "full_name": "Максим Волков",
             "photo": "👨‍💼",
             "status": "🟡 Не беспокоить",
-            "role": "Финансовый директор",
+            "role": "Финансовый директор", 
             "department": "Финансовый отдел",
             "work_hours": "Не указано"
         },
@@ -515,30 +537,31 @@ def sql_sandbox():
                                     value=st.session_state.get("sql_last_query", ""),
                                     height=120,
                                     key="sql_input")
-        with col2:
-            if st.button("▶️ Выполнить", type="primary", key="run_sql", use_container_width=True):
-                if sql_query.strip():
-                    st.session_state.sql_last_query = sql_query
-                    result, feedback = validate_sql_query(sql_query)
-                    st.session_state.sql_last_result = result
-                    st.session_state.sql_last_feedback = feedback
-                    st.session_state.sql_history.append({
-                        "query": sql_query,
-                        "result": result.copy() if result is not None else None,
-                        "feedback": feedback,
-                        "timestamp": time.time()
-                    })
-                    st.session_state.sql_history = st.session_state.sql_history[-10:]
-                    
-                    # Лог событий + оценка
-                    st.session_state.events.append({"type": "sql", "query": sql_query, "timestamp": time.time()})
-                    triggers = evaluator.evaluate_sql_query(sql_query)
-                    for t in triggers:
-                        for trig in TRIGGERS["mvp_triggers"]:
-                            if trig["id"] == t["id"]:
-                                st.session_state.scores[trig["block"]] = max(0, st.session_state.scores[trig["block"]] + t["points"])
-                                break
+        # ✅ Кнопка ВЫПОЛНИТЬ — ПЕРЕМЕЩЕНА ВНИЗ, ПОД ПОЛЕМ
+        if st.button("▶️ Выполнить", type="primary", key="run_sql", use_container_width=True):
+            if sql_query.strip():
+                st.session_state.sql_last_query = sql_query
+                result, feedback = validate_sql_query(sql_query)
+                st.session_state.sql_last_result = result
+                st.session_state.sql_last_feedback = feedback
+                st.session_state.sql_history.append({
+                    "query": sql_query,
+                    "result": result.copy() if result is not None else None,
+                    "feedback": feedback,
+                    "timestamp": time.time()
+                })
+                st.session_state.sql_history = st.session_state.sql_history[-10:]
+                
+                # Лог событий + оценка
+                st.session_state.events.append({"type": "sql", "query": sql_query, "timestamp": time.time()})
+                triggers = evaluator.evaluate_sql_query(sql_query)
+                for t in triggers:
+                    for trig in TRIGGERS["mvp_triggers"]:
+                        if trig["id"] == t["id"]:
+                            st.session_state.scores[trig["block"]] = max(0, st.session_state.scores[trig["block"]] + t["points"])
+                            break
         
+        # Результаты — под кнопкой
         if st.session_state.sql_last_result is not None:
             st.success("✅ Запрос выполнен")
             st.dataframe(st.session_state.sql_last_result, use_container_width=True)
@@ -679,7 +702,7 @@ def report_result():
             st.info(rec)
 
 # ==========================================
-# ✅ НОВОЕ: История выполненного (Вариант C)
+# ✅ История выполненного (Вариант C) — ПОЛНАЯ ВЕРСИЯ
 # ==========================================
 def history_overview():
     st.subheader("🕒 История выполненного")
@@ -844,12 +867,12 @@ def reports_overview():
     st.info("Скоро: сравнение кандидатов, экспорт PDF")
 
 # ==========================================
-# Main
+# Main — ПОРЯДОК ВАЖЕН: initialize_session() ПЕРВЫЙ!
 # ==========================================
 def main():
     st.set_page_config(page_title="DataWork Lab", page_icon="🔍", layout="wide")
-    initialize_session()
-    render_sidebar()
+    initialize_session()   # ✅ ПЕРВОЕ
+    render_sidebar()       # ✅ ВТОРОЕ
     scenario_engine()
     
     current_role = st.session_state.user_profiles[st.session_state.active_profile]["role"]
