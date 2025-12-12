@@ -6,6 +6,7 @@ import html
 import json
 import plotly.graph_objects as go
 from datetime import datetime
+from characters import get_ai_response
 
 # Lazy imports
 def get_demo_database():
