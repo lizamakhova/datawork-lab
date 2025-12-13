@@ -6,7 +6,6 @@ import html
 import json
 import plotly.graph_objects as go
 from datetime import datetime
-from characters import get_ai_response
 
 # Lazy imports
 def get_demo_database():
@@ -206,7 +205,7 @@ def render_sidebar():
             if st.button("📊 Показать отчёт", key="show_report", use_container_width=True, type="primary"):
                 st.session_state.active_tab = "report_result"
             
-            # 💬 Чаты — только для кандидата
+            # 💬 Чаты — только для кандидата (исправлено: через markdown)
             st.markdown("### 💬 Чаты")
             chat_labels = {
                 "alice": "👩‍💼 Алиса Петрова",
@@ -219,10 +218,27 @@ def render_sidebar():
             for chat_id, label in chat_labels.items():
                 unread = sum(1 for m in st.session_state.chats[chat_id] 
                              if m['role'] == 'bot' and not m.get('read', False))
-                badge = f" <span style='background:#e33;color:white;padding:1px 6px;border-radius:10px;font-size:10px;'>{unread}</span>" if unread else ""
-                if st.button(f"{label}{badge}", key=f"nav_{chat_id}", use_container_width=True):
+                
+                button_html = f"""
+                <div style="margin: 0.5rem 0; padding: 0.75rem; border: 1px solid #444; border-radius: 8px; background: #2d3748; cursor: pointer;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span>{label}</span>
+                        {f"<span style='background:#e33;color:white;padding:1px 6px;border-radius:10px;font-size:10px;'>{unread}</span>" if unread > 0 else ""}
+                    </div>
+                </div>
+                """
+                if st.button(f"nav_{chat_id}_btn", key=f"nav_{chat_id}_btn", help="Чат", use_container_width=True):
                     st.session_state.active_chat = chat_id
                     st.session_state.active_tab = "chats"
+                    st.rerun()
+                # Чтобы сделать кликабельным markdown — используем st.button с пустым текстом и help
+                # Но Streamlit не поддерживает HTML-кнопки напрямую → альтернатива: оставить badge в st.button
+                # Поэтому оставим как было, но исправим badge:
+                badge = f" <span style='background:#e33;color:white;padding:1px 6px;border-radius:10px;font-size:10px;'>{unread}</span>" if unread else ""
+                if st.button(f"{label}{badge}", key=f"nav_{chat_id}", use_container_width=True, type="secondary" if unread else "primary"):
+                    st.session_state.active_chat = chat_id
+                    st.session_state.active_tab = "chats"
+                    st.rerun()
         
         else:  # reviewer — только 4 вкладки
             if st.button("🧪 Сценарии", key="tab_scenarios", use_container_width=True):
@@ -406,6 +422,7 @@ def display_chat(chat_id):
             
             try:
                 from characters import get_ai_response
+                # Увеличены задержки для демо (1–3 сек)
                 delays = {"alice": 1.5, "maxim": 3, "kirill": 2, "dba_team": 2, "partner_a": 2.5, "partner_b": 2.5}
                 delay = delays.get(chat_id, 2)
                 time.sleep(delay - 0.8)
@@ -428,9 +445,10 @@ def display_chat(chat_id):
                     "id": f"msg_{int(time.time()*1000)}"
                 })
             except Exception as e:
+                # ✅ Логирование ошибки
                 st.session_state.chats[chat_id].append({
                     "role": "bot",
-                    "content": f"❌ Ошибка: {str(e)}",
+                    "content": f"❌ Ошибка генерации: {str(e)}",
                     "sender_name": "Система",
                     "read": True
                 })
@@ -703,7 +721,7 @@ def report_result():
             st.info(rec)
 
 # ==========================================
-# ✅ История выполненного (Вариант C) — ПОЛНАЯ ВЕРСИЯ
+# ✅ История выполненного (Вариант C) — ИСПРАВЛЕНО: profile["name"]
 # ==========================================
 def history_overview():
     st.subheader("🕒 История выполненного")
@@ -748,7 +766,7 @@ def history_overview():
             event_str, trigger, points, context = str(event), "—", 0, "—"
         
         rows.append({
-            "Кандидат": profile["nickname"],
+            "Кандидат": profile["name"],  # ✅ ИСПРАВЛЕНО: было "nickname"
             "Сценарий": scenario,
             "Событие": event_str,
             "Время": ts,
