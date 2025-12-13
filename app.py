@@ -205,7 +205,7 @@ def render_sidebar():
             if st.button("📊 Показать отчёт", key="show_report", use_container_width=True, type="primary"):
                 st.session_state.active_tab = "report_result"
             
-            # 💬 Чаты — только для кандидата (исправлено: через markdown)
+            # 💬 Чаты — только для кандидата (ИСПРАВЛЕНО: нет технических имён)
             st.markdown("### 💬 Чаты")
             chat_labels = {
                 "alice": "👩‍💼 Алиса Петрова",
@@ -218,24 +218,8 @@ def render_sidebar():
             for chat_id, label in chat_labels.items():
                 unread = sum(1 for m in st.session_state.chats[chat_id] 
                              if m['role'] == 'bot' and not m.get('read', False))
-                
-                button_html = f"""
-                <div style="margin: 0.5rem 0; padding: 0.75rem; border: 1px solid #444; border-radius: 8px; background: #2d3748; cursor: pointer;">
-                    <div style="display: flex; align-items: center; gap: 0.5rem;">
-                        <span>{label}</span>
-                        {f"<span style='background:#e33;color:white;padding:1px 6px;border-radius:10px;font-size:10px;'>{unread}</span>" if unread > 0 else ""}
-                    </div>
-                </div>
-                """
-                if st.button(f"nav_{chat_id}_btn", key=f"nav_{chat_id}_btn", help="Чат", use_container_width=True):
-                    st.session_state.active_chat = chat_id
-                    st.session_state.active_tab = "chats"
-                    st.rerun()
-                # Чтобы сделать кликабельным markdown — используем st.button с пустым текстом и help
-                # Но Streamlit не поддерживает HTML-кнопки напрямую → альтернатива: оставить badge в st.button
-                # Поэтому оставим как было, но исправим badge:
                 badge = f" <span style='background:#e33;color:white;padding:1px 6px;border-radius:10px;font-size:10px;'>{unread}</span>" if unread else ""
-                if st.button(f"{label}{badge}", key=f"nav_{chat_id}", use_container_width=True, type="secondary" if unread else "primary"):
+                if st.button(f"{label}{badge}", key=f"chat_nav_{chat_id}", use_container_width=True):
                     st.session_state.active_chat = chat_id
                     st.session_state.active_tab = "chats"
                     st.rerun()
