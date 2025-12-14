@@ -49,12 +49,21 @@ GROUP_CHATS = {
 }
 
 def get_ai_response(character_key, user_message):
-    from ai_client import OpenAIClient
-    client = OpenAIClient()
-    return client.generate_response(character_key, user_message)
+    """Получаем ответ от OpenAI с детальными промптами"""
+    try:
+        from ai_client import OpenAIClient  # ✅ Lazy import
+        client = OpenAIClient()
+        return client.generate_response(character_key, user_message)
+    except Exception as e:
+        # ✅ Fallback на умные ответы без эмодзи + логирование
+        return get_smart_fallback(character_key, user_message, str(e))
 
-def get_smart_fallback(character_key, user_message):
+def get_smart_fallback(character_key, user_message, error_msg=""):
+    """Умные fallback ответы БЕЗ эмодзи + лог ошибки"""
     message_lower = user_message.lower()
+    
+    if error_msg:
+        return f"⚠️ Временно использую упрощённые ответы. Причина: {error_msg[:100]}..."
     
     if character_key == "alice":
         if any(word in message_lower for word in ["максим", "кирилл", "пришел", "задач"]):
@@ -83,7 +92,7 @@ def get_smart_fallback(character_key, user_message):
         
         else:
             return "Интересный вопрос! Давай разберемся подробнее. Что именно ты пытаешься сделать и что уже пробовал?"
-    
+
     elif character_key == "maxim":
         if any(word in message_lower for word in ["операц", "успешн", "выручк", "доход"]):
             return "Нужна общая выручка за вчера по успешным операциям. ASAP к 11:00 для встречи с инвесторами. За деталями по данным - к Алисе."
@@ -93,7 +102,7 @@ def get_smart_fallback(character_key, user_message):
         
         else:
             return "Зайди к Алисе за техническими деталями. Мне нужны готовые цифры для отчетности."
-    
+
     elif character_key == "kirill":
         if any(word in message_lower for word in ["статистик", "отчет", "юзер"]):
             return "Нужна статистика по юзерам за последнюю неделю — сколько новых, сколько ушедших. Горит!"
@@ -101,32 +110,31 @@ def get_smart_fallback(character_key, user_message):
             return "Критично для отчета продукту. Какие данные уже есть?"
         else:
             return "Горит! Нужны данные как можно скорее. Что именно интересует?"
-    
+
     elif character_key == "dba_team":
         if any(word in message_lower for word in ["update", "insert", "delete"]):
             if "where" in message_lower and any(word in message_lower for word in ["update", "insert"]):
-                return "Выполнено. Не забудь про бэкапы данных если правишь системные таблицы."
+                return "Выполнено, проверяй"
             else:
                 return "Не могу выполнить в таком виде. Формат: UPDATE|INSERT таблица УСЛОВИЯ. Уточни у Алисы."
         else:
             return "Мы выполняем запросы в формате: UPDATE|INSERT таблица УСЛОВИЯ. Для бизнес-логики обратись к Алисе."
-    
+
     elif character_key == "partner_a":
         if any(word in message_lower for word in ["статус", "расхожден"]):
             return "Добрый день! Наши статусы: COMPLETED=успех, DECLINED=отказ, IN_PROGRESS=в процессе. Проверим расхождения и вернемся с ответом."
         else:
             return "Добрый день! По вопросам реестров и статусов операций - обращайтесь. Чем можем помочь?"
-    
+
     elif character_key == "partner_b":
         if any(word in message_lower for word in ["статус", "расхожден"]):
             return "Добрый день! Наши статусы: SUCCESS=успех, FAILED=отказ. Проверим данные и предоставим актуальную информацию."
         else:
             return "Добрый день! Готовы помочь с вопросами по операциям и реестрам."
-    
+
     else:
         return "Давай разберемся с этим вопросом. Расскажи подробнее что именно нужно сделать?"
 
-# ✅ КРИТИЧНО: ДОБАВЛЕНЫ partner_a и partner_b
 CHARACTERS_RESPONSES = {
     "alice": {
         "name": "Алиса Петрова",
@@ -139,17 +147,5 @@ CHARACTERS_RESPONSES = {
     "kirill": {
         "name": "Кирилл Смирнов",
         "get_response": lambda message: get_ai_response("kirill", message)
-    },
-    "dba_team": {
-        "name": "#dba-team",
-        "get_response": lambda message: get_ai_response("dba_team", message)
-    },
-    "partner_a": {
-        "name": "#partner_a_operations_chat",
-        "get_response": lambda message: get_ai_response("partner_a", message)
-    },
-    "partner_b": {
-        "name": "#partner_b_operations_chat",
-        "get_response": lambda message: get_ai_response("partner_b", message)
     }
 }
