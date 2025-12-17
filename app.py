@@ -6,6 +6,7 @@ import html
 import json
 import plotly.graph_objects as go
 from datetime import datetime
+from characters import get_ai_response
 
 # Lazy imports
 def get_demo_database():
@@ -205,7 +206,7 @@ def render_sidebar():
             if st.button("📊 Показать отчёт", key="show_report", use_container_width=True, type="primary"):
                 st.session_state.active_tab = "report_result"
             
-            # 💬 Чаты — только для кандидата (ИСПРАВЛЕНО: нет технических имён)
+            # 💬 Чаты — только для кандидата (исправлено: badge в кружке)
             st.markdown("### 💬 Чаты")
             chat_labels = {
                 "alice": "👩‍💼 Алиса Петрова",
@@ -218,8 +219,13 @@ def render_sidebar():
             for chat_id, label in chat_labels.items():
                 unread = sum(1 for m in st.session_state.chats[chat_id] 
                              if m['role'] == 'bot' and not m.get('read', False))
-                badge = f" <span style='background:#e33;color:white;padding:1px 6px;border-radius:10px;font-size:10px;'>{unread}</span>" if unread else ""
-                if st.button(f"{label}{badge}", key=f"chat_nav_{chat_id}", use_container_width=True):
+                
+                # ✅ Формируем badge в кружке
+                badge_html = f"<span style='background:#e33;color:white;padding:1px 6px;border-radius:10px;font-size:10px;'>{unread}</span>" if unread > 0 else ""
+                display_label = f"{label} {badge_html}" if unread else label
+                
+                # ✅ Кнопка — один раз, с уникальным key
+                if st.button(display_label, key=f"chat_nav_{chat_id}", use_container_width=True):
                     st.session_state.active_chat = chat_id
                     st.session_state.active_tab = "chats"
                     st.rerun()
@@ -396,6 +402,9 @@ def display_chat(chat_id):
             st.session_state.chats[chat_id].append(new_msg)
             st.session_state.events.append({"type": "chat", "to": chat_id, "content": user_input.strip(), "timestamp": time.time()})
             
+            # Логирование
+            st.info(f"📨 Отправляю '{user_input[:20]}...' персонажу {chat_id}")
+            
             # Оценка сообщения
             triggers = evaluator.evaluate_chat_message(user_input.strip(), to=chat_id)
             for t in triggers:
@@ -406,7 +415,7 @@ def display_chat(chat_id):
             
             try:
                 from characters import get_ai_response
-                # Увеличены задержки для демо (1–3 сек)
+                # Увеличенные задержки для демо (1–3 сек)
                 delays = {"alice": 1.5, "maxim": 3, "kirill": 2, "dba_team": 2, "partner_a": 2.5, "partner_b": 2.5}
                 delay = delays.get(chat_id, 2)
                 time.sleep(delay - 0.8)
@@ -428,14 +437,15 @@ def display_chat(chat_id):
                     "sender_name": sender_names.get(chat_id, display_names[chat_id]),
                     "id": f"msg_{int(time.time()*1000)}"
                 })
+                st.success(f"✅ Ответ получен: '{response[:30]}...'")
             except Exception as e:
-                # ✅ Логирование ошибки
                 st.session_state.chats[chat_id].append({
                     "role": "bot",
                     "content": f"❌ Ошибка генерации: {str(e)}",
                     "sender_name": "Система",
                     "read": True
                 })
+                st.error(f"🚨 Ошибка: {str(e)}")
             st.rerun()
 
 # ==========================================
@@ -718,7 +728,7 @@ def history_overview():
     rows = []
     for event in st.session_state.events:
         profile = st.session_state.user_profiles[st.session_state.active_profile]
-        scenario = st.session_state.active_scenario or "—"
+        scenario = st.session_state.active_scenario or "—" 
         ts = time.strftime("%H:%M:%S", time.localtime(event["timestamp"]))
         hour = int(time.strftime("%H", time.localtime(event["timestamp"])))
         
@@ -731,7 +741,7 @@ def history_overview():
                 trigger, points = "polite_language", 1
             else:
                 trigger, points = "—", 0
-            context = "—"
+            context = "—" 
         elif event["type"] == "sql":
             query = event["query"][:100] + ("..." if len(event["query"]) > 100 else "")
             event_str = f"🔍 `{query}`"
