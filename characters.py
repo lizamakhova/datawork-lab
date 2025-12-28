@@ -49,21 +49,32 @@ GROUP_CHATS = {
 }
 
 def get_ai_response(character_key, user_message):
-    """Получаем ответ от OpenAI с детальными промптами"""
+    print(f"[DEBUG] 📥 Запрос от {character_key}: '{user_message[:30]}...'")
+    
     try:
-        from ai_client import OpenAIClient  # ✅ Lazy import
+        from ai_client import OpenAIClient
         client = OpenAIClient()
-        return client.generate_response(character_key, user_message)
+        response = client.generate_response(character_key, user_message)
+        if response:
+            print(f"[DEBUG] 📤 Ответ: '{response[:50]}...'")
+            return response
+        # Fallback если OpenAI не ответил
+        fallback = f"🛠️ Fallback: {character_key} не смог ответить. Пример: 'Расскажи подробнее о задаче.'"
+        print(f"[DEBUG] 📤 Fallback ответ: '{fallback[:50]}...'")
+        return fallback
     except Exception as e:
-        # ✅ Fallback на умные ответы без эмодзи + логирование
-        return get_smart_fallback(character_key, user_message, str(e))
+        fallback = f"❌ Fallback error: {str(e)}"
+        print(f"[DEBUG] 📤 Fallback error: {fallback}")
+        return fallback
+
 
 def get_smart_fallback(character_key, user_message, error_msg=""):
+    
     """Умные fallback ответы БЕЗ эмодзи + лог ошибки"""
     message_lower = user_message.lower()
     
     if error_msg:
-        return f"⚠️ Временно использую упрощённые ответы. Причина: {error_msg[:100]}..."
+        return f"⚠️ Fallback ({error_msg[:50]}...)"
     
     if character_key == "alice":
         if any(word in message_lower for word in ["максим", "кирилл", "пришел", "задач"]):
