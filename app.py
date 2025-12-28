@@ -1,5 +1,5 @@
-# app.py — финальная версия (908 строк)
-import streamlit as st  # ✅ ЕДИНСТВЕННЫЙ импорт st на верхнем уровне
+# app.py — финальная версия, без сокращений
+import streamlit as st
 import pandas as pd
 import time
 import html
@@ -7,7 +7,7 @@ import json
 import plotly.graph_objects as go
 from datetime import datetime
 
-# Lazy imports (без циклических зависимостей)
+# Lazy imports
 def get_demo_database():
     from database import get_demo_database as _get
     return _get()
@@ -168,7 +168,7 @@ def initialize_session():
         st.session_state.w_doc = 10
 
 # ==========================================
-# UI: sidebar — с badge’ами в кружках и дебагом
+# UI: sidebar — с исправленными чатами
 # ==========================================
 def render_sidebar():
     with st.sidebar:
@@ -191,7 +191,7 @@ def render_sidebar():
             st.markdown(f"**Email:** {current['email']}")
             st.markdown(f"**Аватар:** {current['avatar']}")
         
-        # 🔍 DEBUG: Статус OpenAI API ключа (БЕЗ локального импорта!)
+        # 🔍 DEBUG: Статус OpenAI API ключа
         try:
             api_key = st.secrets.get("OPENAI_API_KEY", "NOT_SET")
             key_status = "✅ OK" if api_key and "sk-" in str(api_key) else "❌ MISSING"
@@ -213,7 +213,7 @@ def render_sidebar():
             if st.button("📊 Показать отчёт", key="show_report", use_container_width=True, type="primary"):
                 st.session_state.active_tab = "report_result"
             
-            # 💬 Чаты — только для кандидата (исправлено: badge в кружке)
+            # 💬 Чаты — только для кандидата (исправлено: без HTML в кнопках)
             st.markdown("### 💬 Чаты")
             chat_labels = {
                 "alice": "👩‍💼 Алиса Петрова",
@@ -227,17 +227,11 @@ def render_sidebar():
                 unread = sum(1 for m in st.session_state.chats[chat_id] 
                              if m['role'] == 'bot' and not m.get('read', False))
                 
-                badge_html = f"<span style='background:#e33;color:white;padding:1px 6px;border-radius:10px;font-size:10px;'>{unread}</span>" if unread > 0 else ""
-                button_html = f"""
-                <div style="margin: 0.5rem 0; padding: 0.75rem; border: 1px solid #444; border-radius: 8px; background: #2d3748; cursor: pointer;">
-                    <div style="display: flex; align-items: center; gap: 0.5rem;">
-                        <span>{label}</span>
-                        {badge_html}
-                    </div>
-                </div>
-                """
-                st.markdown(button_html, unsafe_allow_html=True)
-                if st.button(f"chat_{chat_id}_btn", key=f"nav_{chat_id}", use_container_width=True):
+                button_label = label
+                if unread > 0:
+                    button_label += f" •{unread}"
+                
+                if st.button(button_label, key=f"chat_nav_{chat_id}", use_container_width=True):
                     st.session_state.active_chat = chat_id
                     st.session_state.active_tab = "chats"
                     st.rerun()
@@ -337,22 +331,25 @@ def display_profile(chat_id):
         """, unsafe_allow_html=True)
 
 # ==========================================
-# UI: сообщения
+# UI: сообщения — с значками источника
 # ==========================================
 def render_message(msg, is_typing=False):
     from_user = msg['role'] == 'user'
     sender_name = "Вы" if from_user else msg.get('sender_name', 'Система')
+    
+    # ✅ Надёжное определение источника
     sender_icon = ""
-    if not from_user:
-        icons = {
-            "Алиса Петрова": "👩‍💼",
-            "Максим Волков": "👨‍💼",
-            "Кирилл Смирнов": "👨",
-            "Михаил Шилин": "👨‍🔧",
-            "Анна Новикова": "👩",
-            "Дмитрий Семенов": "👨",
-        }
-        sender_icon = icons.get(sender_name, "") + " "
+    if from_user:
+        sender_icon = "👤 "
+    else:
+        source = msg.get("source", "unknown")
+        if source == "fallback":
+            sender_icon = "🟡 "
+        elif source == "openai":
+            sender_icon = "🤖 "
+        else:
+            sender_icon = "❓ "
+    
     status = ""
     if from_user:
         if msg.get('read', False):
@@ -371,7 +368,7 @@ def render_message(msg, is_typing=False):
     """, unsafe_allow_html=True)
 
 # ==========================================
-# UI: чат — с fallback’ом и дебагом
+# UI: чат — сообщение пользователя отображается сразу
 # ==========================================
 def display_chat(chat_id):
     display_names = {
@@ -414,12 +411,16 @@ def display_chat(chat_id):
             st.session_state.chats[chat_id].append(new_msg)
             st.session_state.events.append({"type": "chat", "to": chat_id, "content": user_input.strip(), "timestamp": time.time()})
             
-            # ✅ Fallback-режим (гарантированный ответ)
+            # ✅ Отображаем сообщение пользователя сразу
+            st.rerun()
+            
+            # Запрос к AI — в следующем цикле
             try:
-                from characters import get_ai_response
-                response = get_ai_response(chat_id, user_input.strip())
+                from characters import get_ai_response_with_source
+                response, source = get_ai_response_with_source(chat_id, user_input.strip())
             except Exception as e:
-                response = f"🛠️ Fallback error: {str(e)}"
+                response = f"❌ Ошибка: {str(e)}"
+                source = "fallback"
             
             # Задержка для демо
             delays = {"alice": 1.5, "maxim": 3, "kirill": 2, "dba_team": 2, "partner_a": 2.5, "partner_b": 2.5}
@@ -433,6 +434,7 @@ def display_chat(chat_id):
             st.session_state.chats[chat_id].append({
                 "role": "bot",
                 "content": response,
+                "source": source,
                 "timestamp": time.time(),
                 "read": True,
                 "sender_name": sender_names.get(chat_id, display_names[chat_id]),
@@ -752,7 +754,7 @@ def history_overview():
             event_str, trigger, points, context = str(event), "—", 0, "—"
         
         rows.append({
-            "Кандидат": profile["name"],  # ✅ ИСПРАВЛЕНО: было "nickname"
+            "Кандидат": profile["name"],
             "Сценарий": scenario,
             "Событие": event_str,
             "Время": ts,
@@ -872,12 +874,12 @@ def reports_overview():
     st.info("Скоро: сравнение кандидатов, экспорт PDF")
 
 # ==========================================
-# Main — ПОРЯДОК ВАЖЕН: initialize_session() ПЕРВЫЙ!
+# Main
 # ==========================================
 def main():
     st.set_page_config(page_title="DataWork Lab", page_icon="🔍", layout="wide")
-    initialize_session()   # ✅ ПЕРВОЕ
-    render_sidebar()       # ✅ ВТОРОЕ
+    initialize_session()
+    render_sidebar()
     scenario_engine()
     
     current_role = st.session_state.user_profiles[st.session_state.active_profile]["role"]
