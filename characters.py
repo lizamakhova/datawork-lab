@@ -1,3 +1,4 @@
+# characters.py — финальная версия, без сокращений
 import random
 
 CHARACTERS_PROFILES = {
@@ -48,33 +49,24 @@ GROUP_CHATS = {
     }
 }
 
-def get_ai_response(character_key, user_message):
-    print(f"[DEBUG] 📥 Запрос от {character_key}: '{user_message[:30]}...'")
-    
+def get_ai_response_with_source(character_key, user_message):
+    """Возвращает (response: str, source: str)"""
     try:
         from ai_client import OpenAIClient
         client = OpenAIClient()
         response = client.generate_response(character_key, user_message)
         if response:
-            print(f"[DEBUG] 📤 Ответ: '{response[:50]}...'")
-            return response
-        # Fallback если OpenAI не ответил
-        fallback = f"🛠️ Fallback: {character_key} не смог ответить. Пример: 'Расскажи подробнее о задаче.'"
-        print(f"[DEBUG] 📤 Fallback ответ: '{fallback[:50]}...'")
-        return fallback
-    except Exception as e:
-        fallback = f"❌ Fallback error: {str(e)}"
-        print(f"[DEBUG] 📤 Fallback error: {fallback}")
-        return fallback
-
-
-def get_smart_fallback(character_key, user_message, error_msg=""):
+            return response, "openai"
+    except Exception:
+        pass
     
-    """Умные fallback ответы БЕЗ эмодзи + лог ошибки"""
+    # Fallback
+    fallback_response = get_smart_fallback(character_key, user_message)
+    return fallback_response, "fallback"
+
+def get_smart_fallback(character_key, user_message):
+    """Умные fallback ответы БЕЗ эмодзи + логирование"""
     message_lower = user_message.lower()
-    
-    if error_msg:
-        return f"⚠️ Fallback ({error_msg[:50]}...)"
     
     if character_key == "alice":
         if any(word in message_lower for word in ["максим", "кирилл", "пришел", "задач"]):
@@ -149,14 +141,14 @@ def get_smart_fallback(character_key, user_message, error_msg=""):
 CHARACTERS_RESPONSES = {
     "alice": {
         "name": "Алиса Петрова",
-        "get_response": lambda message: get_ai_response("alice", message)
+        "get_response": lambda message: get_ai_response_with_source("alice", message)
     },
     "maxim": {
         "name": "Максим Волков", 
-        "get_response": lambda message: get_ai_response("maxim", message)
+        "get_response": lambda message: get_ai_response_with_source("maxim", message)
     },
     "kirill": {
         "name": "Кирилл Смирнов",
-        "get_response": lambda message: get_ai_response("kirill", message)
+        "get_response": lambda message: get_ai_response_with_source("kirill", message)
     }
 }
