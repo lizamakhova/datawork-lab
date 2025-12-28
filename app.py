@@ -1,4 +1,4 @@
-# app.py — финальная версия, 1092 строки
+# app.py — финальная версия, 1104 строки
 import streamlit as st
 import pandas as pd
 import time
@@ -334,7 +334,7 @@ def display_profile(chat_id):
         """, unsafe_allow_html=True)
 
 # ==========================================
-# UI: сообщения — с значками источника
+# UI: сообщения — без дублирования имени
 # ==========================================
 def render_message(msg, is_typing=False):
     from_user = msg['role'] == 'user'
@@ -362,15 +362,18 @@ def render_message(msg, is_typing=False):
     content = html.escape(msg['content'], quote=False)
     if is_typing:
         content = "печатает…"
+    
+    # ✅ Убираем дублирование имени — оно уже в content
+    strong_tag = f"<strong>{sender_icon}:</strong>"
     st.markdown(f"""
     <div class='chat-message {msg_class}'>
-        <strong>{sender_icon}{sender_name}:</strong>{status}<br>
+        {strong_tag}{status}<br>
         {content}
     </div>
     """, unsafe_allow_html=True)
 
 # ==========================================
-# UI: чат — ИСПРАВЛЕНО: правильная логика st.rerun()
+# UI: чат — восстановленные профили + без дублей
 # ==========================================
 def display_chat(chat_id):
     display_names = {
@@ -383,20 +386,32 @@ def display_chat(chat_id):
     }
     st.subheader(f"💬 {display_names[chat_id]}")
     
-    # ✅ 1. Помечаем bot-сообщения как прочитанные при открытии чата
+    # ✅ 1. Показываем профиль или описание
+    if chat_id in ["alice", "maxim", "kirill"]:
+        display_profile(chat_id)
+    else:
+        GROUP_CHATS = {
+            "dba_team": {"description": "Команда баз данных — выполняем SQL запросы", "members": "3 участника"},
+            "partner_a": {"description": "Операции с Партнером А — вопросы по реестрам и комиссиям", "members": "Поддержка Партнер А + наша команда"},
+            "partner_b": {"description": "Операции с Партнером Б — согласование реестров и статусов", "members": "Поддержка Партнер Б + наша команда"}
+        }
+        gc = GROUP_CHATS[chat_id]
+        st.caption(f"{gc['description']} • {gc['members']}")
+    
+    # ✅ 2. Помечаем bot-сообщения как прочитанные при открытии чата
     for msg in st.session_state.chats[chat_id]:
         if msg['role'] == 'bot' and not msg.get('read', False):
             msg['read'] = True
     
-    # ✅ 2. Отображаем историю
+    # ✅ 3. Отображаем историю
     for msg in st.session_state.chats[chat_id]:
         render_message(msg, is_typing=False)
     
-    # ✅ 3. "Печатает…", если ожидаем ответ
+    # ✅ 4. "Печатает…", если ожидаем ответ
     if st.session_state.get("pending_response_for") == chat_id:
         render_message({"role": "bot", "content": "", "sender_name": display_names[chat_id]}, is_typing=True)
     
-    # ✅ 4. Форма отправки
+    # ✅ 5. Форма отправки
     with st.form(key=f'chat_form_{chat_id}', clear_on_submit=True):
         user_input = st.text_input("Сообщение:", key=f"input_{chat_id}", placeholder="Напишите сообщение...")
         submitted = st.form_submit_button("Отправить", type="primary")
@@ -414,27 +429,30 @@ def display_chat(chat_id):
             st.session_state.last_user_input = user_input.strip()
             st.rerun()  # ← ПЕРЕЗАПУСК #1
     
-    # ✅ 5. Обработка pending-ответа (в НОВОМ цикле)
+    # ✅ 6. Обработка pending-ответа (в НОВОМ цикле)
     if st.session_state.get("pending_response_for") == chat_id:
         # Снимаем флаг
         st.session_state.pending_response_for = None
         
-        # ✅ ГАРАНТИРОВАННЫЙ FALLBACK (временно)
-        response = f"🛠️ Ответ от {display_names[chat_id]}: '{st.session_state.last_user_input[:20]}...'"
-        source = "fallback"
+        # ✅ Получаем ответ
+        try:
+            from characters import get_ai_response_with_source
+            response, source = get_ai_response_with_source(chat_id, st.session_state.last_user_input)
+        except Exception as e:
+            response = f"❌ Ошибка: {str(e)}"
+            source = "fallback"
         
-        # Задержка для эффекта "печатает…"
+        # Задержка
         delays = {"alice": 1.5, "maxim": 3, "kirill": 2, "dba_team": 2, "partner_a": 2.5, "partner_b": 2.5}
         time.sleep(delays.get(chat_id, 1.5))
         
-        # Сохраняем ответ
+        # ✅ Сохраняем ответ БЕЗ sender_name (он уже в response)
         st.session_state.chats[chat_id].append({
             "role": "bot",
             "content": response,
             "source": source,
             "timestamp": time.time(),
             "read": True,
-            "sender_name": display_names[chat_id],
             "id": f"msg_{int(time.time()*1000)}"
         })
         st.rerun()  # ← ПЕРЕЗАПУСК #2
@@ -608,7 +626,6 @@ def scenario_engine():
                 "content": "Нужна выручка за 15.01 к 11:00. ASAP!",
                 "timestamp": time.time(),
                 "read": False,  # ✅ НЕПРОЧИТАННОЕ
-                "sender_name": "Максим Волков",
                 "id": f"auto_{int(time.time() * 1000)}"
             })
             st.session_state.scenario_step_1 = True
