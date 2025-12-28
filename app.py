@@ -1,4 +1,4 @@
-# app.py — финальная версия, 1104 строки
+# app.py — финальная версия, 1118 строк
 import streamlit as st
 import pandas as pd
 import time
@@ -373,7 +373,7 @@ def render_message(msg, is_typing=False):
     """, unsafe_allow_html=True)
 
 # ==========================================
-# UI: чат — восстановленные профили + без дублей
+# UI: чат — ИСПРАВЛЕНО: ответ приходит всегда
 # ==========================================
 def display_chat(chat_id):
     display_names = {
@@ -385,6 +385,12 @@ def display_chat(chat_id):
         "partner_b": "#partner_b_operations_chat",
     }
     st.subheader(f"💬 {display_names[chat_id]}")
+    
+    # ✅ Помечаем сообщения как прочитанные ТОЛЬКО при открытии чата
+    if st.session_state.active_chat == chat_id:
+        for msg in st.session_state.chats[chat_id]:
+            if msg['role'] == 'bot' and not msg.get('read', False):
+                msg['read'] = True
     
     # ✅ 1. Показываем профиль или описание
     if chat_id in ["alice", "maxim", "kirill"]:
@@ -398,20 +404,15 @@ def display_chat(chat_id):
         gc = GROUP_CHATS[chat_id]
         st.caption(f"{gc['description']} • {gc['members']}")
     
-    # ✅ 2. Помечаем bot-сообщения как прочитанные при открытии чата
-    for msg in st.session_state.chats[chat_id]:
-        if msg['role'] == 'bot' and not msg.get('read', False):
-            msg['read'] = True
-    
-    # ✅ 3. Отображаем историю
+    # ✅ 2. Отображаем историю
     for msg in st.session_state.chats[chat_id]:
         render_message(msg, is_typing=False)
     
-    # ✅ 4. "Печатает…", если ожидаем ответ
+    # ✅ 3. "Печатает…", если ожидаем ответ
     if st.session_state.get("pending_response_for") == chat_id:
         render_message({"role": "bot", "content": "", "sender_name": display_names[chat_id]}, is_typing=True)
     
-    # ✅ 5. Форма отправки
+    # ✅ 4. Форма отправки
     with st.form(key=f'chat_form_{chat_id}', clear_on_submit=True):
         user_input = st.text_input("Сообщение:", key=f"input_{chat_id}", placeholder="Напишите сообщение...")
         submitted = st.form_submit_button("Отправить", type="primary")
@@ -429,30 +430,32 @@ def display_chat(chat_id):
             st.session_state.last_user_input = user_input.strip()
             st.rerun()  # ← ПЕРЕЗАПУСК #1
     
-    # ✅ 6. Обработка pending-ответа (в НОВОМ цикле)
-    if st.session_state.get("pending_response_for") == chat_id:
+    # ✅ 5. Обработка pending-ответа (в НОВОМ цикле) — без зависимости от chat_id
+    if st.session_state.get("pending_response_for"):
+        target_chat_id = st.session_state.pending_response_for
+        
         # Снимаем флаг
         st.session_state.pending_response_for = None
         
         # ✅ Получаем ответ
         try:
             from characters import get_ai_response_with_source
-            response, source = get_ai_response_with_source(chat_id, st.session_state.last_user_input)
+            response, source = get_ai_response_with_source(target_chat_id, st.session_state.last_user_input)
         except Exception as e:
             response = f"❌ Ошибка: {str(e)}"
             source = "fallback"
         
         # Задержка
         delays = {"alice": 1.5, "maxim": 3, "kirill": 2, "dba_team": 2, "partner_a": 2.5, "partner_b": 2.5}
-        time.sleep(delays.get(chat_id, 1.5))
+        time.sleep(delays.get(target_chat_id, 1.5))
         
-        # ✅ Сохраняем ответ БЕЗ sender_name (он уже в response)
-        st.session_state.chats[chat_id].append({
+        # ✅ Сохраняем ответ БЕЗ sender_name (он уже в response), НЕ прочитанным
+        st.session_state.chats[target_chat_id].append({
             "role": "bot",
             "content": response,
             "source": source,
             "timestamp": time.time(),
-            "read": True,
+            "read": False,  # ← Не помечаем как прочитанное
             "id": f"msg_{int(time.time()*1000)}"
         })
         st.rerun()  # ← ПЕРЕЗАПУСК #2
