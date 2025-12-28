@@ -1,3 +1,4 @@
+# ai_client.py — финальная версия с дебагом
 import time
 import random
 import re
@@ -12,12 +13,14 @@ class OpenAIClient:
             try:
                 import streamlit as st
                 api_key = st.secrets.get("OPENAI_API_KEY")
-                if api_key:
+                if api_key and "sk-" in str(api_key):
                     import openai
                     self.client = openai.OpenAI(api_key=api_key)
                 else:
+                    print("[DEBUG] OpenAI API key missing or invalid")
                     return None
-            except Exception:
+            except Exception as e:
+                print(f"[DEBUG] OpenAI client init error: {e}")
                 return None
         return self.client
 
@@ -53,9 +56,11 @@ class OpenAIClient:
     def _try_openai(self, character, user_message, chat_history):
         client = self._get_client()
         if not client:
+            print("[DEBUG] 🔴 OpenAI client = None → fallback")
             return None
 
         try:
+            print(f"[DEBUG] 🟢 Вызываю OpenAI для {character}: '{user_message[:20]}...'")
             import streamlit as st
             messages = [{"role": "system", "content": self._get_detailed_prompt(character)}]
             for msg in chat_history[-6:]:
@@ -73,8 +78,10 @@ class OpenAIClient:
 
             result = response.choices[0].message.content
             result = self._filter_sql_queries(result, character)
+            print(f"[DEBUG] 🟢 Ответ получен: '{result[:30]}...'")
             return html.escape(result, quote=False)
         except Exception as e:
+            print(f"[DEBUG] 🔴 OpenAI error: {str(e)}")
             return None
 
     def _get_detailed_prompt(self, character):
