@@ -1,4 +1,4 @@
-# app.py — финальная версия, без сокращений
+# app.py — финальная версия, 100% без сокращений
 import streamlit as st
 import pandas as pd
 import time
@@ -166,6 +166,9 @@ def initialize_session():
         st.session_state.w_hard = 30
         st.session_state.w_integrity = 40
         st.session_state.w_doc = 10
+        # ✅ Флаг для ожидания ответа
+        st.session_state.pending_response_for = None
+        st.session_state.last_user_input = ""
 
 # ==========================================
 # UI: sidebar — с исправленными чатами
@@ -368,7 +371,7 @@ def render_message(msg, is_typing=False):
     """, unsafe_allow_html=True)
 
 # ==========================================
-# UI: чат — сообщение пользователя отображается сразу
+# UI: чат — ИСПРАВЛЕНО: нет бесконечного ожидания
 # ==========================================
 def display_chat(chat_id):
     display_names = {
@@ -394,13 +397,15 @@ def display_chat(chat_id):
     for msg in st.session_state.chats[chat_id]:
         render_message(msg, is_typing=False)
     
-    if st.session_state.chats[chat_id] and st.session_state.chats[chat_id][-1]['role'] == 'user' and not st.session_state.chats[chat_id][-1].get('read', False):
+    # ✅ Показываем "печатает…", если ожидаем ответ
+    if st.session_state.get("pending_response_for") == chat_id:
         render_message({"role": "bot", "content": "", "sender_name": display_names[chat_id]}, is_typing=True)
     
     with st.form(key=f'chat_form_{chat_id}', clear_on_submit=True):
         user_input = st.text_input("Сообщение:", key=f"input_{chat_id}", placeholder="Напишите сообщение...")
         submitted = st.form_submit_button("Отправить", type="primary")
         if submitted and user_input.strip():
+            # Этап 1: отправка сообщения
             new_msg = {
                 "role": "user",
                 "content": user_input.strip(),
@@ -409,38 +414,48 @@ def display_chat(chat_id):
                 "id": f"msg_{int(time.time()*1000)}"
             }
             st.session_state.chats[chat_id].append(new_msg)
-            st.session_state.events.append({"type": "chat", "to": chat_id, "content": user_input.strip(), "timestamp": time.time()})
-            
-            # ✅ Отображаем сообщение пользователя сразу
-            st.rerun()
-            
-            # Запрос к AI — в следующем цикле
-            try:
-                from characters import get_ai_response_with_source
-                response, source = get_ai_response_with_source(chat_id, user_input.strip())
-            except Exception as e:
-                response = f"❌ Ошибка: {str(e)}"
-                source = "fallback"
-            
-            # Задержка для демо
-            delays = {"alice": 1.5, "maxim": 3, "kirill": 2, "dba_team": 2, "partner_a": 2.5, "partner_b": 2.5}
-            time.sleep(delays.get(chat_id, 2))
-            
-            sender_names = {
-                "dba_team": "Михаил Шилин",
-                "partner_a": "Анна Новикова",
-                "partner_b": "Дмитрий Семенов",
-            }
-            st.session_state.chats[chat_id].append({
-                "role": "bot",
-                "content": response,
-                "source": source,
-                "timestamp": time.time(),
-                "read": True,
-                "sender_name": sender_names.get(chat_id, display_names[chat_id]),
-                "id": f"msg_{int(time.time()*1000)}"
+            st.session_state.events.append({
+                "type": "chat",
+                "to": chat_id,
+                "content": user_input.strip(),
+                "timestamp": time.time()
             })
+            # Устанавливаем флаг ожидания
+            st.session_state.pending_response_for = chat_id
+            st.session_state.last_user_input = user_input.strip()
             st.rerun()
+    
+    # Этап 2: обработка pending-ответа
+    if st.session_state.get("pending_response_for") == chat_id:
+        # Снимаем флаг, чтобы не повторять
+        st.session_state.pending_response_for = None
+        
+        try:
+            from characters import get_ai_response_with_source
+            response, source = get_ai_response_with_source(chat_id, st.session_state.last_user_input)
+        except Exception as e:
+            response = f"❌ Ошибка: {str(e)}"
+            source = "fallback"
+        
+        # Задержка для эффекта "печатает…"
+        delays = {"alice": 1.5, "maxim": 3, "kirill": 2, "dba_team": 2, "partner_a": 2.5, "partner_b": 2.5}
+        time.sleep(delays.get(chat_id, 1.5))
+        
+        sender_names = {
+            "dba_team": "Михаил Шилин",
+            "partner_a": "Анна Новикова",
+            "partner_b": "Дмитрий Семенов",
+        }
+        st.session_state.chats[chat_id].append({
+            "role": "bot",
+            "content": response,
+            "source": source,
+            "timestamp": time.time(),
+            "read": True,
+            "sender_name": sender_names.get(chat_id, display_names[chat_id]),
+            "id": f"msg_{int(time.time()*1000)}"
+        })
+        st.rerun()
 
 # ==========================================
 # UI: отчёт по задаче
