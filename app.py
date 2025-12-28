@@ -193,7 +193,7 @@ def render_sidebar():
         
         # 🔍 DEBUG: Статус OpenAI API ключа
         try:
-            import streamlit as st
+            #import streamlit as st
             api_key = st.secrets.get("OPENAI_API_KEY", "NOT_SET")
             key_status = "✅ OK" if api_key and "sk-" in str(api_key) else "❌ MISSING"
             st.caption(f"🔑 OpenAI: {key_status}")
