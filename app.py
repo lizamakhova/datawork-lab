@@ -1,4 +1,4 @@
-# app.py
+# app.py — финальная версия с дебагом
 import streamlit as st
 import pandas as pd
 import time
@@ -6,7 +6,6 @@ import html
 import json
 import plotly.graph_objects as go
 from datetime import datetime
-from characters import get_ai_response
 
 # Lazy imports
 def get_demo_database():
@@ -40,7 +39,7 @@ except Exception as e:
     st.warning(f"⚠️ Не найден role_weights.json: {e}")
     ROLE_WEIGHTS = {
         "role_weights": {
-            "analyst": {"soft_skills": 20, "hard_skills": 30, "data_integrity": 40, "process_documentation": 10}
+            "analist": {"soft_skills": 20, "hard_skills": 30, "data_integrity": 40, "process_documentation": 10}
         }
     }
 
@@ -169,7 +168,7 @@ def initialize_session():
         st.session_state.w_doc = 10
 
 # ==========================================
-# UI: sidebar
+# UI: sidebar — с дебагом и badge’ами
 # ==========================================
 def render_sidebar():
     with st.sidebar:
@@ -191,6 +190,15 @@ def render_sidebar():
             st.markdown(f"**Роль:** {current['role']}")
             st.markdown(f"**Email:** {current['email']}")
             st.markdown(f"**Аватар:** {current['avatar']}")
+        
+        # 🔍 DEBUG: Статус OpenAI API ключа
+        try:
+            import streamlit as st
+            api_key = st.secrets.get("OPENAI_API_KEY", "NOT_SET")
+            key_status = "✅ OK" if api_key and "sk-" in str(api_key) else "❌ MISSING"
+            st.caption(f"🔑 OpenAI: {key_status}")
+        except Exception as e:
+            st.caption(f"⚠️ Secrets error: {str(e)[:30]}...")
         
         # 📁 Инструменты — фильтруем по роли
         st.markdown("### 📁 Рабочие инструменты")
@@ -220,12 +228,17 @@ def render_sidebar():
                 unread = sum(1 for m in st.session_state.chats[chat_id] 
                              if m['role'] == 'bot' and not m.get('read', False))
                 
-                # ✅ Формируем badge в кружке
+                # ✅ Badge в кружке — через st.markdown
                 badge_html = f"<span style='background:#e33;color:white;padding:1px 6px;border-radius:10px;font-size:10px;'>{unread}</span>" if unread > 0 else ""
-                display_label = f"{label} {badge_html}" if unread else label
-                
-                # ✅ Кнопка — один раз, с уникальным key
-                if st.button(display_label, key=f"chat_nav_{chat_id}", use_container_width=True):
+                button_html = f"""
+                <div style="margin: 0.5rem 0; padding: 0.75rem; border: 1px solid #444; border-radius: 8px; background: #2d3748; cursor: pointer;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span>{label}</span>
+                        {badge_html}
+                    </div>
+                </div>
+                """
+                if st.markdown(button_html, unsafe_allow_html=True):
                     st.session_state.active_chat = chat_id
                     st.session_state.active_tab = "chats"
                     st.rerun()
@@ -359,7 +372,7 @@ def render_message(msg, is_typing=False):
     """, unsafe_allow_html=True)
 
 # ==========================================
-# UI: чат
+# UI: чат — с дебагом
 # ==========================================
 def display_chat(chat_id):
     display_names = {
@@ -402,50 +415,36 @@ def display_chat(chat_id):
             st.session_state.chats[chat_id].append(new_msg)
             st.session_state.events.append({"type": "chat", "to": chat_id, "content": user_input.strip(), "timestamp": time.time()})
             
-            # Логирование
-            st.info(f"📨 Отправляю '{user_input[:20]}...' персонажу {chat_id}")
+            # ✅ INLINE-ВАЛИДАЦИЯ OpenAI
+            import streamlit as st
+            api_key = st.secrets.get("OPENAI_API_KEY")
+            if not api_key or "sk-" not in str(api_key):
+                st.warning("⚠️ OPENAI_API_KEY не настроен. Использую fallback-режим.")
             
-            # Оценка сообщения
-            triggers = evaluator.evaluate_chat_message(user_input.strip(), to=chat_id)
-            for t in triggers:
-                for trig in TRIGGERS["mvp_triggers"]:
-                    if trig["id"] == t["id"]:
-                        st.session_state.scores[trig["block"]] = max(0, st.session_state.scores[trig["block"]] + t["points"])
-                        break
-            
+            # ✅ Fallback-режим (гарантированный ответ)
             try:
                 from characters import get_ai_response
-                # Увеличенные задержки для демо (1–3 сек)
-                delays = {"alice": 1.5, "maxim": 3, "kirill": 2, "dba_team": 2, "partner_a": 2.5, "partner_b": 2.5}
-                delay = delays.get(chat_id, 2)
-                time.sleep(delay - 0.8)
-                if st.session_state.chats[chat_id]:
-                    st.session_state.chats[chat_id][-1]["read"] = True
-                st.rerun()
-                time.sleep(0.8)
                 response = get_ai_response(chat_id, user_input.strip())
-                sender_names = {
-                    "dba_team": "Михаил Шилин",
-                    "partner_a": "Анна Новикова",
-                    "partner_b": "Дмитрий Семенов",
-                }
-                st.session_state.chats[chat_id].append({
-                    "role": "bot",
-                    "content": response,
-                    "timestamp": time.time(),
-                    "read": True,
-                    "sender_name": sender_names.get(chat_id, display_names[chat_id]),
-                    "id": f"msg_{int(time.time()*1000)}"
-                })
-                st.success(f"✅ Ответ получен: '{response[:30]}...'")
             except Exception as e:
-                st.session_state.chats[chat_id].append({
-                    "role": "bot",
-                    "content": f"❌ Ошибка генерации: {str(e)}",
-                    "sender_name": "Система",
-                    "read": True
-                })
-                st.error(f"🚨 Ошибка: {str(e)}")
+                response = f"❌ Fallback error: {str(e)}"
+            
+            # Задержка для демо
+            delays = {"alice": 1.5, "maxim": 3, "kirill": 2, "dba_team": 2, "partner_a": 2.5, "partner_b": 2.5}
+            time.sleep(delays.get(chat_id, 2))
+            
+            sender_names = {
+                "dba_team": "Михаил Шилин",
+                "partner_a": "Анна Новикова",
+                "partner_b": "Дмитрий Семенов",
+            }
+            st.session_state.chats[chat_id].append({
+                "role": "bot",
+                "content": response,
+                "timestamp": time.time(),
+                "read": True,
+                "sender_name": sender_names.get(chat_id, display_names[chat_id]),
+                "id": f"msg_{int(time.time()*1000)}"
+            })
             st.rerun()
 
 # ==========================================
