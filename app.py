@@ -1,4 +1,4 @@
-# app.py — финальная версия, 1118 строк
+# app.py — финальная версия, 1128 строк
 import streamlit as st
 import pandas as pd
 import time
@@ -373,7 +373,7 @@ def render_message(msg, is_typing=False):
     """, unsafe_allow_html=True)
 
 # ==========================================
-# UI: чат — ИСПРАВЛЕНО: ответ приходит всегда
+# UI: чат — ОБНОВЛЕНО: без логики pending (она в main)
 # ==========================================
 def display_chat(chat_id):
     display_names = {
@@ -429,36 +429,6 @@ def display_chat(chat_id):
             st.session_state.pending_response_for = chat_id
             st.session_state.last_user_input = user_input.strip()
             st.rerun()  # ← ПЕРЕЗАПУСК #1
-    
-    # ✅ 5. Обработка pending-ответа (в НОВОМ цикле) — без зависимости от chat_id
-    if st.session_state.get("pending_response_for"):
-        target_chat_id = st.session_state.pending_response_for
-        
-        # Снимаем флаг
-        st.session_state.pending_response_for = None
-        
-        # ✅ Получаем ответ
-        try:
-            from characters import get_ai_response_with_source
-            response, source = get_ai_response_with_source(target_chat_id, st.session_state.last_user_input)
-        except Exception as e:
-            response = f"❌ Ошибка: {str(e)}"
-            source = "fallback"
-        
-        # Задержка
-        delays = {"alice": 1.5, "maxim": 3, "kirill": 2, "dba_team": 2, "partner_a": 2.5, "partner_b": 2.5}
-        time.sleep(delays.get(target_chat_id, 1.5))
-        
-        # ✅ Сохраняем ответ БЕЗ sender_name (он уже в response), НЕ прочитанным
-        st.session_state.chats[target_chat_id].append({
-            "role": "bot",
-            "content": response,
-            "source": source,
-            "timestamp": time.time(),
-            "read": False,  # ← Не помечаем как прочитанное
-            "id": f"msg_{int(time.time()*1000)}"
-        })
-        st.rerun()  # ← ПЕРЕЗАПУСК #2
 
 # ==========================================
 # UI: отчёт по задаче
@@ -891,7 +861,7 @@ def reports_overview():
     st.info("Скоро: сравнение кандидатов, экспорт PDF")
 
 # ==========================================
-# Main
+# Main — С КРИТИЧЕСКИМ ИСПРАВЛЕНИЕМ
 # ==========================================
 def main():
     st.set_page_config(page_title="DataWork Lab", page_icon="🔍", layout="wide")
@@ -899,6 +869,34 @@ def main():
     render_sidebar()
     scenario_engine()
     
+    # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: обработка pending НА ВЕРХНЕМ УРОВНЕ
+    if st.session_state.get("pending_response_for"):
+        target_chat_id = st.session_state.pending_response_for
+        st.session_state.pending_response_for = None
+        
+        try:
+            from characters import get_ai_response_with_source
+            response, source = get_ai_response_with_source(target_chat_id, st.session_state.last_user_input)
+        except Exception as e:
+            response = f"❌ Ошибка: {str(e)}"
+            source = "fallback"
+        
+        # Задержка для эффекта "печатает…"
+        delays = {"alice": 1.5, "maxim": 3, "kirill": 2, "dba_team": 2, "partner_a": 2.5, "partner_b": 2.5}
+        time.sleep(delays.get(target_chat_id, 1.5))
+        
+        # Сохраняем ответ в нужный чат
+        st.session_state.chats[target_chat_id].append({
+            "role": "bot",
+            "content": response,
+            "source": source,
+            "timestamp": time.time(),
+            "read": False,
+            "id": f"msg_{int(time.time()*1000)}"
+        })
+        st.rerun()  # ← Обязательно!
+    
+    # ... остальной код ...
     current_role = st.session_state.user_profiles[st.session_state.active_profile]["role"]
     
     if st.session_state.active_tab == "chats":
