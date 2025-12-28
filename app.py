@@ -1,5 +1,5 @@
-# app.py — финальная версия с дебагом
-import streamlit as st
+# app.py — финальная версия (908 строк)
+import streamlit as st  # ✅ ЕДИНСТВЕННЫЙ импорт st на верхнем уровне
 import pandas as pd
 import time
 import html
@@ -7,7 +7,7 @@ import json
 import plotly.graph_objects as go
 from datetime import datetime
 
-# Lazy imports
+# Lazy imports (без циклических зависимостей)
 def get_demo_database():
     from database import get_demo_database as _get
     return _get()
@@ -39,7 +39,7 @@ except Exception as e:
     st.warning(f"⚠️ Не найден role_weights.json: {e}")
     ROLE_WEIGHTS = {
         "role_weights": {
-            "analist": {"soft_skills": 20, "hard_skills": 30, "data_integrity": 40, "process_documentation": 10}
+            "analyst": {"soft_skills": 20, "hard_skills": 30, "data_integrity": 40, "process_documentation": 10}
         }
     }
 
@@ -168,7 +168,7 @@ def initialize_session():
         st.session_state.w_doc = 10
 
 # ==========================================
-# UI: sidebar — с дебагом и badge’ами
+# UI: sidebar — с badge’ами в кружках и дебагом
 # ==========================================
 def render_sidebar():
     with st.sidebar:
@@ -191,9 +191,8 @@ def render_sidebar():
             st.markdown(f"**Email:** {current['email']}")
             st.markdown(f"**Аватар:** {current['avatar']}")
         
-        # 🔍 DEBUG: Статус OpenAI API ключа
+        # 🔍 DEBUG: Статус OpenAI API ключа (БЕЗ локального импорта!)
         try:
-            #import streamlit as st
             api_key = st.secrets.get("OPENAI_API_KEY", "NOT_SET")
             key_status = "✅ OK" if api_key and "sk-" in str(api_key) else "❌ MISSING"
             st.caption(f"🔑 OpenAI: {key_status}")
@@ -228,7 +227,6 @@ def render_sidebar():
                 unread = sum(1 for m in st.session_state.chats[chat_id] 
                              if m['role'] == 'bot' and not m.get('read', False))
                 
-                # ✅ Badge в кружке — через st.markdown
                 badge_html = f"<span style='background:#e33;color:white;padding:1px 6px;border-radius:10px;font-size:10px;'>{unread}</span>" if unread > 0 else ""
                 button_html = f"""
                 <div style="margin: 0.5rem 0; padding: 0.75rem; border: 1px solid #444; border-radius: 8px; background: #2d3748; cursor: pointer;">
@@ -238,7 +236,8 @@ def render_sidebar():
                     </div>
                 </div>
                 """
-                if st.markdown(button_html, unsafe_allow_html=True):
+                st.markdown(button_html, unsafe_allow_html=True)
+                if st.button(f"chat_{chat_id}_btn", key=f"nav_{chat_id}", use_container_width=True):
                     st.session_state.active_chat = chat_id
                     st.session_state.active_tab = "chats"
                     st.rerun()
@@ -372,7 +371,7 @@ def render_message(msg, is_typing=False):
     """, unsafe_allow_html=True)
 
 # ==========================================
-# UI: чат — с дебагом
+# UI: чат — с fallback’ом и дебагом
 # ==========================================
 def display_chat(chat_id):
     display_names = {
@@ -415,18 +414,12 @@ def display_chat(chat_id):
             st.session_state.chats[chat_id].append(new_msg)
             st.session_state.events.append({"type": "chat", "to": chat_id, "content": user_input.strip(), "timestamp": time.time()})
             
-            # ✅ INLINE-ВАЛИДАЦИЯ OpenAI
-            import streamlit as st
-            api_key = st.secrets.get("OPENAI_API_KEY")
-            if not api_key or "sk-" not in str(api_key):
-                st.warning("⚠️ OPENAI_API_KEY не настроен. Использую fallback-режим.")
-            
             # ✅ Fallback-режим (гарантированный ответ)
             try:
                 from characters import get_ai_response
                 response = get_ai_response(chat_id, user_input.strip())
             except Exception as e:
-                response = f"❌ Fallback error: {str(e)}"
+                response = f"🛠️ Fallback error: {str(e)}"
             
             # Задержка для демо
             delays = {"alice": 1.5, "maxim": 3, "kirill": 2, "dba_team": 2, "partner_a": 2.5, "partner_b": 2.5}
