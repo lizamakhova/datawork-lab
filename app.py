@@ -1,4 +1,4 @@
-# app.py — финальная версия, 100% без сокращений
+# app.py — финальная версия, 1086 строк
 import streamlit as st
 import pandas as pd
 import time
@@ -166,12 +166,11 @@ def initialize_session():
         st.session_state.w_hard = 30
         st.session_state.w_integrity = 40
         st.session_state.w_doc = 10
-        # ✅ Флаг для ожидания ответа
         st.session_state.pending_response_for = None
         st.session_state.last_user_input = ""
 
 # ==========================================
-# UI: sidebar — с исправленными чатами
+# UI: sidebar — с badge’ами для непрочитанных
 # ==========================================
 def render_sidebar():
     with st.sidebar:
@@ -216,7 +215,7 @@ def render_sidebar():
             if st.button("📊 Показать отчёт", key="show_report", use_container_width=True, type="primary"):
                 st.session_state.active_tab = "report_result"
             
-            # 💬 Чаты — только для кандидата (исправлено: без HTML в кнопках)
+            # 💬 Чаты — с badge’ами для непрочитанных
             st.markdown("### 💬 Чаты")
             chat_labels = {
                 "alice": "👩‍💼 Алиса Петрова",
@@ -227,6 +226,7 @@ def render_sidebar():
                 "partner_b": "🤝 #partner_b_operations_chat",
             }
             for chat_id, label in chat_labels.items():
+                # ✅ Подсчёт непрочитанных
                 unread = sum(1 for m in st.session_state.chats[chat_id] 
                              if m['role'] == 'bot' and not m.get('read', False))
                 
@@ -239,7 +239,7 @@ def render_sidebar():
                     st.session_state.active_tab = "chats"
                     st.rerun()
         
-        else:  # reviewer — только 4 вкладки
+        else:  # reviewer
             if st.button("🧪 Сценарии", key="tab_scenarios", use_container_width=True):
                 st.session_state.active_tab = "scenarios"
             if st.button("⚖️ Настроить оценку", key="tab_reviewer", use_container_width=True):
@@ -249,7 +249,7 @@ def render_sidebar():
             if st.button("🕒 История выполненного", key="tab_history", use_container_width=True):
                 st.session_state.active_tab = "history"
         
-        # 🎯 Сценарии — доступны всем
+        # 🎯 Сценарии
         st.markdown("### 🎯 Обучение")
         if st.button("▶️ Запустить сценарий", key="start_scenario", use_container_width=True):
             st.session_state.active_scenario = "revenue_mismatch"
@@ -340,7 +340,6 @@ def render_message(msg, is_typing=False):
     from_user = msg['role'] == 'user'
     sender_name = "Вы" if from_user else msg.get('sender_name', 'Система')
     
-    # ✅ Надёжное определение источника
     sender_icon = ""
     if from_user:
         sender_icon = "👤 "
@@ -371,7 +370,7 @@ def render_message(msg, is_typing=False):
     """, unsafe_allow_html=True)
 
 # ==========================================
-# UI: чат — ИСПРАВЛЕНО: нет бесконечного ожидания
+# UI: чат — ИСПРАВЛЕНО: прочитанные/непрочитанные
 # ==========================================
 def display_chat(chat_id):
     display_names = {
@@ -394,6 +393,11 @@ def display_chat(chat_id):
         gc = GROUP_CHATS[chat_id]
         st.caption(f"{gc['description']} • {gc['members']}")
     
+    # ✅ Помечаем все bot-сообщения как прочитанные при открытии чата
+    for msg in st.session_state.chats[chat_id]:
+        if msg['role'] == 'bot' and not msg.get('read', False):
+            msg['read'] = True
+    
     for msg in st.session_state.chats[chat_id]:
         render_message(msg, is_typing=False)
     
@@ -405,7 +409,6 @@ def display_chat(chat_id):
         user_input = st.text_input("Сообщение:", key=f"input_{chat_id}", placeholder="Напишите сообщение...")
         submitted = st.form_submit_button("Отправить", type="primary")
         if submitted and user_input.strip():
-            # Этап 1: отправка сообщения
             new_msg = {
                 "role": "user",
                 "content": user_input.strip(),
@@ -420,14 +423,12 @@ def display_chat(chat_id):
                 "content": user_input.strip(),
                 "timestamp": time.time()
             })
-            # Устанавливаем флаг ожидания
             st.session_state.pending_response_for = chat_id
             st.session_state.last_user_input = user_input.strip()
             st.rerun()
     
-    # Этап 2: обработка pending-ответа
+    # Обработка pending-ответа
     if st.session_state.get("pending_response_for") == chat_id:
-        # Снимаем флаг, чтобы не повторять
         st.session_state.pending_response_for = None
         
         try:
@@ -437,7 +438,6 @@ def display_chat(chat_id):
             response = f"❌ Ошибка: {str(e)}"
             source = "fallback"
         
-        # Задержка для эффекта "печатает…"
         delays = {"alice": 1.5, "maxim": 3, "kirill": 2, "dba_team": 2, "partner_a": 2.5, "partner_b": 2.5}
         time.sleep(delays.get(chat_id, 1.5))
         
@@ -451,7 +451,7 @@ def display_chat(chat_id):
             "content": response,
             "source": source,
             "timestamp": time.time(),
-            "read": True,
+            "read": True,  # прочитано сразу после отправки
             "sender_name": sender_names.get(chat_id, display_names[chat_id]),
             "id": f"msg_{int(time.time()*1000)}"
         })
@@ -615,7 +615,7 @@ def knowledge_base():
             st.markdown(article['content'])
 
 # ==========================================
-# UI: сценарий (заготовка)
+# UI: сценарий — с read=False
 # ==========================================
 def scenario_engine():
     if st.session_state.active_scenario and st.session_state.scenario_start_time:
@@ -625,7 +625,7 @@ def scenario_engine():
                 "role": "bot",
                 "content": "Нужна выручка за 15.01 к 11:00. ASAP!",
                 "timestamp": time.time(),
-                "read": False,
+                "read": False,  # ✅ НЕПРОЧИТАННОЕ
                 "sender_name": "Максим Волков",
                 "id": f"auto_{int(time.time() * 1000)}"
             })
