@@ -168,11 +168,8 @@ def initialize_session():
         st.session_state.w_doc = 10
         st.session_state.pending_response_for = None
         st.session_state.pending_user_input = ""
-        st.session_state.response_ready = False
-        st.session_state.response_content = ""
-        st.session_state.response_source = ""
-        st.session_state.response_target_chat = None
         st.session_state.response_start_time = None
+        st.session_state.last_check = 0
 
 # ==========================================
 # UI: sidebar — с badge’ами для непрочитанных
@@ -419,10 +416,10 @@ def display_chat(chat_id):
         render_message(msg, is_typing=False)
     
     # ✅ 3. "Печатает…", если ожидаем ответ
-    if st.session_state.pending_response_for == chat_id and not st.session_state.response_ready:
+    if st.session_state.pending_response_for == chat_id:
         render_message({"role": "bot", "content": "", "sender_name": display_names[chat_id]}, is_typing=True)
     
-    # ✅ 4. Форма отправки — мгновенное сохранение
+    # ✅ 4. Форма отправки — мгновенное сохранение + st.rerun()
     with st.form(key=f'chat_form_{chat_id}', clear_on_submit=True):
         user_input = st.text_input("Сообщение:", key=f"input_{chat_id}", placeholder="Напишите сообщение...")
         submitted = st.form_submit_button("Отправить", type="primary")
@@ -441,14 +438,13 @@ def display_chat(chat_id):
                 "timestamp": time.time()
             })
             
-            # ✅ Ставим флаг ожидания
+            # ✅ Помечаем, что ждём ответа
             st.session_state.pending_response_for = chat_id
             st.session_state.pending_user_input = user_input.strip()
-            st.session_state.response_ready = False
-            st.session_state.response_target_chat = chat_id
             st.session_state.response_start_time = time.time()
             
-            # ✅ НЕ вызываем st.rerun() — интерфейс остаётся отзывчивым
+            # ✅ ЕДИНСТВЕННЫЙ st.rerun() — чтобы отобразить сообщение и "печатает…"
+            st.rerun()
 
 # ==========================================
 # UI: отчёт по задаче
@@ -888,63 +884,57 @@ def main():
     render_sidebar()
     scenario_engine()
     
-    # ✅ 1. Показываем "печатает…" если ожидаем ответ
-    if st.session_state.pending_response_for and not st.session_state.response_ready:
-        target_chat = st.session_state.pending_response_for
-        # Добавляем "печатает…", если его ещё нет
-        if not st.session_state.chats[target_chat] or \
-           not st.session_state.chats[target_chat][-1].get("typing", False):
-            st.session_state.chats[target_chat].append({
-                "role": "bot",
-                "content": "",
-                "typing": True,
-                "id": f"typing_{int(time.time()*1000)}"
-            })
-    
-    # ✅ 2. Эмулируем задержку БЕЗ time.sleep()
-    if st.session_state.pending_response_for and not st.session_state.response_ready:
-        if "response_start_time" not in st.session_state:
-            st.session_state.response_start_time = time.time()
-        elif time.time() - st.session_state.response_start_time >= 1.5:
-            # Генерируем ответ
+    # ✅ Фоновая проверка — ответ приходит даже при простое
+    if st.session_state.pending_response_for:
+        elapsed = time.time() - st.session_state.response_start_time
+        now = time.time()
+        # Проверяем не чаще 200 мс
+        if now - st.session_state.last_check > 0.2:
+            st.session_state.last_check = now
+        
+        # Если прошло 1.5 сек — генерируем ответ
+        if elapsed >= 1.5:
             try:
                 from characters import get_ai_response_with_source
                 response, source = get_ai_response_with_source(
-                    st.session_state.response_target_chat,
+                    st.session_state.pending_response_for,
                     st.session_state.pending_user_input
                 )
             except Exception as e:
                 response = f"❌ Ошибка: {str(e)}"
                 source = "fallback"
             
-            # Сохраняем ответ
-            st.session_state.response_ready = True
-            st.session_state.response_content = response
-            st.session_state.response_source = source
-            
             # Удаляем "печатает…"
-            st.session_state.chats[st.session_state.response_target_chat] = [
-                msg for msg in st.session_state.chats[st.session_state.response_target_chat]
+            chat_id = st.session_state.pending_response_for
+            st.session_state.chats[chat_id] = [
+                msg for msg in st.session_state.chats[chat_id]
                 if not msg.get("typing", False)
             ]
-    
-    # ✅ 3. Вставляем ответ
-    if st.session_state.response_ready:
-        st.session_state.chats[st.session_state.response_target_chat].append({
-            "role": "bot",
-            "content": st.session_state.response_content,
-            "source": st.session_state.response_source,
-            "read": False,
-            "timestamp": time.time()
-        })
-        # Сбрасываем флаги
-        st.session_state.pending_response_for = None
-        st.session_state.response_ready = False
-        st.session_state.response_content = ""
-        st.session_state.response_source = ""
-        st.session_state.response_target_chat = None
-        if "response_start_time" in st.session_state:
-            del st.session_state.response_start_time
+            
+            # Добавляем ответ
+            st.session_state.chats[chat_id].append({
+                "role": "bot",
+                "content": response,
+                "source": source,
+                "read": False
+            })
+            
+            # Сбрасываем флаги
+            st.session_state.pending_response_for = None
+            st.session_state.pending_user_input = ""
+            
+            # ✅ ЕДИНСТВЕННЫЙ st.rerun() после генерации
+            st.rerun()
+        else:
+            # Показываем "печатает…", если его нет
+            chat_id = st.session_state.pending_response_for
+            if not st.session_state.chats[chat_id] or \
+               not st.session_state.chats[chat_id][-1].get("typing", False):
+                st.session_state.chats[chat_id].append({
+                    "role": "bot",
+                    "content": "",
+                    "typing": True
+                })
     
     # ... остальной код ...
     current_role = st.session_state.user_profiles[st.session_state.active_profile]["role"]
