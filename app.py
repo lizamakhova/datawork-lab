@@ -1,4 +1,4 @@
-# app.py — финальная версия, 1284 строки
+# app.py — финальная версия, 1312 строк
 import streamlit as st
 import pandas as pd
 import time
@@ -169,6 +169,7 @@ def initialize_session():
         st.session_state.response_phase = None  # ✅ ДВУХФАЗНАЯ ЛОГИКА
         st.session_state.response_target_chat = None
         st.session_state.response_user_input = ""
+        st.session_state.response_start_time = None
 
 # ==========================================
 # UI: sidebar — с badge’ами для непрочитанных
@@ -419,11 +420,22 @@ def display_chat(chat_id):
         user_input = st.text_input("Сообщение:", key=f"input_{chat_id}", placeholder="Напишите сообщение...")
         submitted = st.form_submit_button("Отправить", type="primary")
         if submitted and user_input.strip():
+            # ✅ ФАЗА 1: сохраняем сообщение
+            st.session_state.chats[chat_id].append({
+                "role": "user",
+                "content": user_input.strip(),
+                "timestamp": time.time(),
+                "read": False,
+                "id": f"msg_{int(time.time()*1000)}"
+            })
+            
             # ✅ ФАЗА 1: начинаем "печатать"
             st.session_state.response_phase = "typing"
             st.session_state.response_target_chat = chat_id
             st.session_state.response_user_input = user_input.strip()
-            st.rerun()
+            st.session_state.response_start_time = time.time()
+            
+            # ✅ НЕ вызываем st.rerun() — оставляем интерфейс доступным
 
 # ==========================================
 # UI: отчёт по задаче
@@ -874,7 +886,7 @@ def main():
             "id": f"typing_{int(time.time()*1000)}"
         })
         st.session_state.response_phase = "generating"
-        st.rerun()
+        # НЕ вызываем st.rerun() — оставляем интерфейс доступным
     
     # ✅ ФАЗА 3: генерация ответа (работает в ЛЮБОЙ вкладке)
     elif st.session_state.response_phase == "generating":
