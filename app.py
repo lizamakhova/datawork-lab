@@ -1,4 +1,4 @@
-# app.py — финальная версия, 1312 строк
+# app.py — финальная версия, 955 строк
 import streamlit as st
 import pandas as pd
 import time
@@ -166,9 +166,12 @@ def initialize_session():
         st.session_state.w_hard = 30
         st.session_state.w_integrity = 40
         st.session_state.w_doc = 10
-        st.session_state.response_phase = None  # ✅ ДВУХФАЗНАЯ ЛОГИКА
+        st.session_state.pending_response_for = None
+        st.session_state.pending_user_input = ""
+        st.session_state.response_ready = False
+        st.session_state.response_content = ""
+        st.session_state.response_source = ""
         st.session_state.response_target_chat = None
-        st.session_state.response_user_input = ""
         st.session_state.response_start_time = None
 
 # ==========================================
@@ -380,7 +383,7 @@ def render_message(msg, is_typing=False):
     """, unsafe_allow_html=True)
 
 # ==========================================
-# UI: чат — ДВУХФАЗНАЯ ЛОГИКА
+# UI: чат — ИСПРАВЛЕНО: мгновенное отображение
 # ==========================================
 def display_chat(chat_id):
     display_names = {
@@ -393,7 +396,7 @@ def display_chat(chat_id):
     }
     st.subheader(f"💬 {display_names[chat_id]}")
     
-    # ✅ Помечаем сообщения как прочитанные ТОЛЬКО при открытии чата
+    # ✅ Помечаем bot-сообщения как прочитанные ТОЛЬКО при открытии чата
     if st.session_state.active_chat == chat_id:
         for msg in st.session_state.chats[chat_id]:
             if msg['role'] == 'bot' and not msg.get('read', False):
@@ -415,27 +418,37 @@ def display_chat(chat_id):
     for msg in st.session_state.chats[chat_id]:
         render_message(msg, is_typing=False)
     
-    # ✅ 3. Форма отправки — ФАЗА 1
+    # ✅ 3. "Печатает…", если ожидаем ответ
+    if st.session_state.pending_response_for == chat_id and not st.session_state.response_ready:
+        render_message({"role": "bot", "content": "", "sender_name": display_names[chat_id]}, is_typing=True)
+    
+    # ✅ 4. Форма отправки — мгновенное сохранение
     with st.form(key=f'chat_form_{chat_id}', clear_on_submit=True):
         user_input = st.text_input("Сообщение:", key=f"input_{chat_id}", placeholder="Напишите сообщение...")
         submitted = st.form_submit_button("Отправить", type="primary")
         if submitted and user_input.strip():
-            # ✅ ФАЗА 1: сохраняем сообщение
+            # ✅ Сразу сохраняем сообщение
             st.session_state.chats[chat_id].append({
                 "role": "user",
                 "content": user_input.strip(),
-                "timestamp": time.time(),
                 "read": False,
-                "id": f"msg_{int(time.time()*1000)}"
+                "timestamp": time.time()
+            })
+            st.session_state.events.append({
+                "type": "chat",
+                "to": chat_id,
+                "content": user_input.strip(),
+                "timestamp": time.time()
             })
             
-            # ✅ ФАЗА 1: начинаем "печатать"
-            st.session_state.response_phase = "typing"
+            # ✅ Ставим флаг ожидания
+            st.session_state.pending_response_for = chat_id
+            st.session_state.pending_user_input = user_input.strip()
+            st.session_state.response_ready = False
             st.session_state.response_target_chat = chat_id
-            st.session_state.response_user_input = user_input.strip()
             st.session_state.response_start_time = time.time()
             
-            # ✅ НЕ вызываем st.rerun() — оставляем интерфейс доступным
+            # ✅ НЕ вызываем st.rerun() — интерфейс остаётся отзывчивым
 
 # ==========================================
 # UI: отчёт по задаче
@@ -497,7 +510,7 @@ def task_report_form():
             st.warning("Заполните все поля.")
 
 # ==========================================
-# UI: схема БД (начало)
+# UI: схема БД
 # ==========================================
 def show_database_schema():
     st.markdown("#### 🗃️ Схема базы данных")
@@ -526,7 +539,7 @@ def show_database_schema():
             c3.write(col_info['description'])
 
 # ==========================================
-# UI: SQL песочница (начало)
+# UI: SQL песочница
 # ==========================================
 def sql_sandbox():
     st.subheader("🔧 SQL Песочница")
@@ -605,11 +618,10 @@ def scenario_engine():
                 "role": "bot",
                 "content": "Нужна выручка за 15.01 к 11:00. ASAP!",
                 "timestamp": time.time(),
-                "read": False,  # ✅ НЕПРОЧИТАННОЕ
+                "read": False,
                 "id": f"auto_{int(time.time() * 1000)}"
             })
             st.session_state.scenario_step_1 = True
-            # st.rerun() ← УДАЛЕНО
 
 # ==========================================
 # UI: режим ревьюера
@@ -868,7 +880,7 @@ def reports_overview():
     st.info("Скоро: сравнение кандидатов, экспорт PDF")
 
 # ==========================================
-# Main — С ДВУХФАЗНОЙ ЛОГИКОЙ
+# Main — ФИНАЛЬНАЯ ЛОГИКА
 # ==========================================
 def main():
     st.set_page_config(page_title="DataWork Lab", page_icon="🔍", layout="wide")
@@ -876,52 +888,63 @@ def main():
     render_sidebar()
     scenario_engine()
     
-    # ✅ ФАЗА 2: показ "печатает…"
-    if st.session_state.response_phase == "typing":
-        target_chat = st.session_state.response_target_chat
-        st.session_state.chats[target_chat].append({
-            "role": "bot",
-            "content": "",
-            "typing": True,
-            "id": f"typing_{int(time.time()*1000)}"
-        })
-        st.session_state.response_phase = "generating"
-        # НЕ вызываем st.rerun() — оставляем интерфейс доступным
+    # ✅ 1. Показываем "печатает…" если ожидаем ответ
+    if st.session_state.pending_response_for and not st.session_state.response_ready:
+        target_chat = st.session_state.pending_response_for
+        # Добавляем "печатает…", если его ещё нет
+        if not st.session_state.chats[target_chat] or \
+           not st.session_state.chats[target_chat][-1].get("typing", False):
+            st.session_state.chats[target_chat].append({
+                "role": "bot",
+                "content": "",
+                "typing": True,
+                "id": f"typing_{int(time.time()*1000)}"
+            })
     
-    # ✅ ФАЗА 3: генерация ответа (работает в ЛЮБОЙ вкладке)
-    elif st.session_state.response_phase == "generating":
-        target_chat = st.session_state.response_target_chat
-        user_input = st.session_state.response_user_input
-        
-        # Удаляем "печатает…"
-        st.session_state.chats[target_chat] = [
-            msg for msg in st.session_state.chats[target_chat]
-            if not msg.get("typing", False)
-        ]
-        
-        # Генерируем
-        try:
-            from characters import get_ai_response_with_source
-            response, source = get_ai_response_with_source(target_chat, user_input)
-        except Exception as e:
-            response = f"❌ Ошибка: {str(e)}"
-            source = "fallback"
-        
-        # Задержка
-        delays = {"alice": 1.5, "maxim": 3, "kirill": 2, "dba_team": 2, "partner_a": 2.5, "partner_b": 2.5}
-        time.sleep(delays.get(target_chat, 1.5))
-        
-        # Добавляем ответ
-        st.session_state.chats[target_chat].append({
+    # ✅ 2. Эмулируем задержку БЕЗ time.sleep()
+    if st.session_state.pending_response_for and not st.session_state.response_ready:
+        if "response_start_time" not in st.session_state:
+            st.session_state.response_start_time = time.time()
+        elif time.time() - st.session_state.response_start_time >= 1.5:
+            # Генерируем ответ
+            try:
+                from characters import get_ai_response_with_source
+                response, source = get_ai_response_with_source(
+                    st.session_state.response_target_chat,
+                    st.session_state.pending_user_input
+                )
+            except Exception as e:
+                response = f"❌ Ошибка: {str(e)}"
+                source = "fallback"
+            
+            # Сохраняем ответ
+            st.session_state.response_ready = True
+            st.session_state.response_content = response
+            st.session_state.response_source = source
+            
+            # Удаляем "печатает…"
+            st.session_state.chats[st.session_state.response_target_chat] = [
+                msg for msg in st.session_state.chats[st.session_state.response_target_chat]
+                if not msg.get("typing", False)
+            ]
+    
+    # ✅ 3. Вставляем ответ
+    if st.session_state.response_ready:
+        st.session_state.chats[st.session_state.response_target_chat].append({
             "role": "bot",
-            "content": response,
-            "source": source,
+            "content": st.session_state.response_content,
+            "source": st.session_state.response_source,
             "read": False,
-            "id": f"msg_{int(time.time()*1000)}"
+            "timestamp": time.time()
         })
-        
-        st.session_state.response_phase = None
-        st.rerun()
+        # Сбрасываем флаги
+        st.session_state.pending_response_for = None
+        st.session_state.response_ready = False
+        st.session_state.response_content = ""
+        st.session_state.response_source = ""
+        st.session_state.response_target_chat = None
+        if "response_start_time" in st.session_state:
+            del st.session_state.response_start_time
     
     # ... остальной код ...
     current_role = st.session_state.user_profiles[st.session_state.active_profile]["role"]
