@@ -380,7 +380,7 @@ def render_message(msg, is_typing=False):
     """, unsafe_allow_html=True)
 
 # ==========================================
-# UI: чат — ИСПРАВЛЕНО: мгновенное отображение
+# UI: чат — ИСПРАВЛЕНО: один "печатает…"
 # ==========================================
 def display_chat(chat_id):
     display_names = {
@@ -419,7 +419,7 @@ def display_chat(chat_id):
     if st.session_state.pending_response_for == chat_id:
         render_message({"role": "bot", "content": "", "sender_name": display_names[chat_id]}, is_typing=True)
     
-    # ✅ 4. Форма отправки — мгновенное сохранение + st.rerun()
+    # ✅ 4. Форма отправки — только сообщение, без "печатает…"
     with st.form(key=f'chat_form_{chat_id}', clear_on_submit=True):
         user_input = st.text_input("Сообщение:", key=f"input_{chat_id}", placeholder="Напишите сообщение...")
         submitted = st.form_submit_button("Отправить", type="primary")
@@ -438,12 +438,12 @@ def display_chat(chat_id):
                 "timestamp": time.time()
             })
             
-            # ✅ Помечаем, что ждём ответа
+            # ✅ Устанавливаем флаг ожидания
             st.session_state.pending_response_for = chat_id
             st.session_state.pending_user_input = user_input.strip()
             st.session_state.response_start_time = time.time()
             
-            # ✅ ЕДИНСТВЕННЫЙ st.rerun() — чтобы отобразить сообщение и "печатает…"
+            # ✅ ЕДИНСТВЕННЫЙ st.rerun() — чтобы отобразить сообщение
             st.rerun()
 
 # ==========================================
@@ -884,10 +884,11 @@ def main():
     render_sidebar()
     scenario_engine()
     
-    # ✅ Фоновая проверка — ответ приходит даже при простое
+    # ✅ ГАРАНТИРОВАННОЕ обновление — даже если вы в чате
     if st.session_state.pending_response_for:
         elapsed = time.time() - st.session_state.response_start_time
         now = time.time()
+        
         # Проверяем не чаще 200 мс
         if now - st.session_state.last_check > 0.2:
             st.session_state.last_check = now
@@ -904,8 +905,9 @@ def main():
                 response = f"❌ Ошибка: {str(e)}"
                 source = "fallback"
             
-            # Удаляем "печатает…"
             chat_id = st.session_state.pending_response_for
+            
+            # Удаляем ВСЕ "печатает…"
             st.session_state.chats[chat_id] = [
                 msg for msg in st.session_state.chats[chat_id]
                 if not msg.get("typing", False)
@@ -923,18 +925,21 @@ def main():
             st.session_state.pending_response_for = None
             st.session_state.pending_user_input = ""
             
-            # ✅ ЕДИНСТВЕННЫЙ st.rerun() после генерации
+            # ✅ ГАРАНТИРОВАННЫЙ st.rerun() — даже если вы в чате
             st.rerun()
+        
         else:
             # Показываем "печатает…", если его нет
             chat_id = st.session_state.pending_response_for
-            if not st.session_state.chats[chat_id] or \
-               not st.session_state.chats[chat_id][-1].get("typing", False):
+            has_typing = any(msg.get("typing", False) for msg in st.session_state.chats[chat_id])
+            if not has_typing:
                 st.session_state.chats[chat_id].append({
                     "role": "bot",
                     "content": "",
                     "typing": True
                 })
+                # ✅ Дополнительный st.rerun(), чтобы отобразить "печатает…" сразу
+                st.rerun()
     
     # ... остальной код ...
     current_role = st.session_state.user_profiles[st.session_state.active_profile]["role"]
